@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "digital_clock"
+version = "2.0.0"
+description = "桌面數位時鐘 — 支援番茄鐘、提醒、整點網頁、截圖自動隱藏"
+requires-python = ">=3.13"
+dependencies = [
+    "pynput>=1.8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage>=7.6",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["core*", "services*", "strategies*", "ui*"]
+exclude = ["tests*", "reports*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = [".venv", "__pycache__", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # 由 formatter 處理
+    "E402",  # 部分模組需在 logger 設定後才 import
+]
+
+[tool.coverage.run]
+source = ["core", "services", "strategies"]
+omit = ["tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
