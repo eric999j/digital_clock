@@ -170,20 +170,24 @@ class DigitalClock(Observer):
         p = Process(target=show_reminder_popup, args=(display_text,))
         p.start()
 
+    def _show_info_after_idle(self, title: str, message: str) -> None:
+        """延後顯示訊息框，避免在 Tk callback 中重入 modal 視窗。"""
+        self.root.after_idle(lambda: messagebox.showinfo(title, message, parent=self.root))
+
     def _on_reminder_added(self, *args) -> None:
-        messagebox.showinfo("成功", "提醒已設定成功！", parent=self.root)
+        self._show_info_after_idle("成功", "提醒已設定成功！")
         self._update_reminder_menu()
 
     def _on_reminder_updated(self, *args) -> None:
-        messagebox.showinfo("成功", "提醒已更新！", parent=self.root)
+        self._show_info_after_idle("成功", "提醒已更新！")
         self._update_reminder_menu()
 
     def _on_reminder_deleted(self, *args) -> None:
-        messagebox.showinfo("成功", "提醒已刪除。", parent=self.root)
+        self._show_info_after_idle("成功", "提醒已刪除。")
         self._update_reminder_menu()
 
     def _on_hourly_web_updated(self, *args) -> None:
-        messagebox.showinfo("成功", "整點網頁提醒設定已更新！", parent=self.root)
+        self._show_info_after_idle("成功", "整點網頁提醒設定已更新！")
 
     def _on_hourly_web_pause_toggled(self, is_paused: bool, *args) -> None:
         label = "啟動" if is_paused else "暫停"
@@ -209,25 +213,33 @@ class DigitalClock(Observer):
     def _on_open_reminder_window(self, reminder_to_edit: dict[str, Any] | None = None, *args) -> None:
         """開啟設定提醒的視窗。"""
         from ui.reminder_window import ReminderWindow
-        try:
-            config = self.logic.get_config()
-            theme = config['themes'].get(config['appearance']['theme'])
-            geometry = config['ui_behavior']['reminder_window_geometry']
-            ReminderWindow(self.root, self.logic.add_reminder, theme, reminder_to_edit, geometry=geometry)
-        except Exception as e:
-            logger.error("Error opening reminder window: %s", e)
+
+        def open_window() -> None:
+            try:
+                config = self.logic.get_config()
+                theme = config['themes'].get(config['appearance']['theme'])
+                geometry = config['ui_behavior']['reminder_window_geometry']
+                ReminderWindow(self.root, self.logic.add_reminder, theme, reminder_to_edit, geometry=geometry)
+            except Exception as e:
+                logger.error("Error opening reminder window: %s", e)
+
+        self.root.after_idle(open_window)
 
     def _on_open_hourly_web_window(self, *args) -> None:
         """開啟整點網頁提醒設定視窗。"""
         from ui.hourly_web_window import HourlyWebWindow
-        try:
-            config = self.logic.get_config()
-            theme = config['themes'].get(config['appearance']['theme'])
-            current_config = config.get('hourly_web_reminder', {})
-            geometry = config['ui_behavior']['hourly_web_window_geometry']
-            HourlyWebWindow(self.root, self.logic.update_hourly_web_reminder, theme, current_config, geometry=geometry)
-        except Exception as e:
-            logger.error("Error opening hourly web window: %s", e)
+
+        def open_window() -> None:
+            try:
+                config = self.logic.get_config()
+                theme = config['themes'].get(config['appearance']['theme'])
+                current_config = config.get('hourly_web_reminder', {})
+                geometry = config['ui_behavior']['hourly_web_window_geometry']
+                HourlyWebWindow(self.root, self.logic.update_hourly_web_reminder, theme, current_config, geometry=geometry)
+            except Exception as e:
+                logger.error("Error opening hourly web window: %s", e)
+
+        self.root.after_idle(open_window)
 
     def _setup_window(self) -> None:
         """初始化視窗屬性、大小與位置。"""
@@ -396,8 +408,12 @@ class DigitalClock(Observer):
             time_str = datetime.strptime(reminder['datetime'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M')
 
         msg = f"您確定要刪除以下提醒嗎？\n\n時間: {time_str}\n訊息: {reminder['message']}"
-        if messagebox.askyesno("確認刪除", msg, parent=self.root):
-            self.logic.delete_reminder(reminder)
+
+        def confirm_delete() -> None:
+            if messagebox.askyesno("確認刪除", msg, parent=self.root):
+                self.logic.delete_reminder(reminder)
+
+        self.root.after_idle(confirm_delete)
 
     def _show_context_menu(self, event: tk.Event) -> None:
         """
