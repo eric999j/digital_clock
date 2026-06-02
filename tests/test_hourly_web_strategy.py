@@ -87,6 +87,13 @@ class TestHourlyWebReminderStrategy(unittest.TestCase):
         now2 = datetime(2025, 1, 6, 10, 0, 0)
         self.assertTrue(self.strategy.check(self.base_config, now2))
 
+    def test_same_hour_next_day_triggers_again(self):
+        now1 = datetime(2025, 1, 6, 9, 0, 0)
+        self.assertTrue(self.strategy.check(self.base_config, now1))
+
+        now2 = datetime(2025, 1, 7, 9, 0, 0)
+        self.assertTrue(self.strategy.check(self.base_config, now2))
+
     # --- 狀態隔離 ---
 
     def test_fresh_instance_has_no_triggered_hour(self):

@@ -31,6 +31,10 @@ class ClockLogic:
         self.ui = ui_controller
         self.config_manager = config_manager
         self.config = self.config_manager.load_config() # 保持 config 屬性以相容部分舊代碼如果有的話，或給 get_config 使用
+        self._save_delay_ms = self._resolve_save_delay_ms(self.config)
+        self._save_after_id: str | None = None
+        self._pending_config: dict[str, Any] | None = None
+        self._pending_window_position: tuple[int, int] | None = None
         self._observers: list[Observer] = []
 
         # 初始化服務
@@ -86,6 +90,21 @@ class ClockLogic:
         """儲存目前設定到檔案。若傳入 config 則儲存該設定，否則從磁碟重新載入後儲存。"""
         self.config_manager.save_config(config if config is not None else self.get_config())
 
+    def _resolve_save_delay_ms(self, config: dict[str, Any]) -> int:
+        """
+        從設定解析延遲儲存毫秒數。
+
+        Args:
+            config: 設定字典
+
+        Returns:
+            延遲儲存毫秒數
+        """
+        save_delay = config.get('system', {}).get('save_delay_ms', 1000)
+        if isinstance(save_delay, int | float):
+            return max(0, int(save_delay))
+        return 1000
+
     def schedule_save(self, config: dict[str, Any] | None = None) -> None:
         """
         防抖延遲儲存設定，避免拖曳時頻繁寫入磁碟。
@@ -95,22 +114,51 @@ class ClockLogic:
         """
         if config is not None:
             self._pending_config = config
-        # 取消上一次尚未執行的排程
-        if getattr(self, '_save_after_id', None) is not None:
+            if self._pending_window_position is not None:
+                x, y = self._pending_window_position
+                config.setdefault('window', {})['x'] = x
+                config['window']['y'] = y
+        self._schedule_pending_save()
+
+    def schedule_window_position_save(self, x: int, y: int) -> None:
+        """
+        防抖延遲儲存視窗位置，避免拖曳熱路徑反覆載入整份設定。
+
+        Args:
+            x: 視窗 x 座標
+            y: 視窗 y 座標
+        """
+        self._pending_window_position = (x, y)
+        if self._pending_config is not None:
+            self._pending_config.setdefault('window', {})['x'] = x
+            self._pending_config['window']['y'] = y
+        self._schedule_pending_save()
+
+    def _schedule_pending_save(self) -> None:
+        """重新安排延遲儲存 callback。"""
+        if self._save_after_id is not None:
             try:
                 self.ui.after_cancel(self._save_after_id)
-            except Exception:
-                pass
-        save_delay = self.config_manager.load_config().get('system', {}).get('save_delay_ms', 1000)
-        self._save_after_id = self.ui.after(save_delay, self._do_save)
+            except Exception as e:
+                logger.debug("Cancel scheduled config save failed: %s", e)
+        self._save_after_id = self.ui.after(self._save_delay_ms, self._do_save)
 
     def _do_save(self) -> None:
         """執行實際的儲存動作（由 schedule_save 排程呼叫）。"""
         self._save_after_id = None
-        pending = getattr(self, '_pending_config', None)
+        pending = self._pending_config
+        pending_window_position = self._pending_window_position
         if pending is not None:
             self.config_manager.save_config(pending)
             self._pending_config = None
+            self._pending_window_position = None
+        elif pending_window_position is not None:
+            config = self.get_config()
+            x, y = pending_window_position
+            config.setdefault('window', {})['x'] = x
+            config['window']['y'] = y
+            self.config_manager.save_config(config)
+            self._pending_window_position = None
         else:
             self.save_current_config()
 

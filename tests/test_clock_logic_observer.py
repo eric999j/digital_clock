@@ -1,5 +1,6 @@
 """ClockLogic Observer 派發例外隔離測試。"""
 import unittest
+from unittest.mock import MagicMock
 
 from core.observer import Observer
 
@@ -20,6 +21,21 @@ class _GoodObserver(Observer):
 
     def update(self, event, *args, **kwargs):
         self.events.append((event, args, kwargs))
+
+
+class _FakeUiScheduler:
+    """測試 ClockLogic 延遲排程用的精簡 UI stub。"""
+
+    def __init__(self):
+        self.after_calls = []
+        self.cancelled_ids = []
+
+    def after(self, delay_ms, callback):
+        self.after_calls.append((delay_ms, callback))
+        return f"after-{len(self.after_calls)}"
+
+    def after_cancel(self, after_id):
+        self.cancelled_ids.append(after_id)
 
 
 class TestObserverIsolation(unittest.TestCase):
@@ -59,6 +75,48 @@ class TestObserverIsolation(unittest.TestCase):
         """Observer 是 abstract class，缺 update 應無法實例化。"""
         with self.assertRaises(TypeError):
             Observer()  # type: ignore[abstract]
+
+
+class TestClockLogicScheduledSave(unittest.TestCase):
+    """ClockLogic 延遲儲存流程測試。"""
+
+    def _make_logic_stub(self):
+        """建立只包含儲存排程狀態的 ClockLogic stub。"""
+        from core.clock_logic import ClockLogic
+
+        logic = ClockLogic.__new__(ClockLogic)
+        logic.ui = _FakeUiScheduler()
+        logic.config_manager = MagicMock()
+        logic._save_delay_ms = 250
+        logic._save_after_id = None
+        logic._pending_config = None
+        logic._pending_window_position = None
+        return logic
+
+    def test_window_position_save_loads_config_only_when_flushed(self):
+        """拖曳排程時不應立即載入 config，flush 時才合併最新設定。"""
+        logic = self._make_logic_stub()
+        latest_config = {
+            'window': {'x': 1, 'y': 2},
+            'reminders': [{'message': 'keep'}],
+        }
+        logic.config_manager.load_config.return_value = latest_config
+
+        logic.schedule_window_position_save(10, 20)
+        logic.schedule_window_position_save(30, 40)
+
+        logic.config_manager.load_config.assert_not_called()
+        self.assertEqual(logic.ui.cancelled_ids, ['after-1'])
+        self.assertEqual(logic.ui.after_calls[-1][0], 250)
+
+        logic._do_save()
+
+        logic.config_manager.load_config.assert_called_once()
+        logic.config_manager.save_config.assert_called_once()
+        saved_config = logic.config_manager.save_config.call_args[0][0]
+        self.assertEqual(saved_config['window']['x'], 30)
+        self.assertEqual(saved_config['window']['y'], 40)
+        self.assertEqual(saved_config['reminders'], [{'message': 'keep'}])
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 from services.reminder_service import ReminderService
@@ -95,6 +95,18 @@ class TestReminderService(unittest.TestCase):
 
         self.service.check_reminders(is_paused=False, now=now, config=provided_config)
         self.service.strategy.check.assert_called_once_with([], now, time_format='%H:%M')
+
+    def test_remove_expired_reminders_drops_invalid_onetime_data(self):
+        future = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+        valid_future = {'datetime': future, 'message': 'future', 'weekdays': []}
+        weekly = {'time': '10:00', 'message': 'weekly', 'weekdays': ['週一']}
+        invalid = {'datetime': 'not-a-date', 'message': 'bad', 'weekdays': []}
+        self.config_data['reminders'] = [invalid, valid_future, weekly]
+
+        self.service.remove_expired_reminders()
+
+        self.assertEqual(self.config_data['reminders'], [valid_future, weekly])
+        self.mock_config_mgr.save_config.assert_called_once_with(self.config_data)
 
 if __name__ == '__main__':
     unittest.main()

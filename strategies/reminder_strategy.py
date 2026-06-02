@@ -16,6 +16,8 @@ class ReminderStrategy(CheckStrategy):
         # 記錄上次觸發週期提醒的完整分鐘鍵（格式："YYYY-MM-DD HH:MM"）。
         # 使用完整日期+時間，避免跨小時同分鐘誤判（如 1:30 與 2:30 的 minute 同為 30）。
         self._last_weekly_minute_key: str = ""
+        self._datetime_cache: dict[str, datetime | None] = {}
+        self._datetime_cache_limit = 1024
 
     def check(
         self,
@@ -56,14 +58,39 @@ class ReminderStrategy(CheckStrategy):
                     continue  # 忽略無效的星期字串
             elif 'datetime' in r:
                 # 單次提醒：時間已到即觸發（Service 層負責刪除，不需在此去重）
-                try:
-                    if datetime.strptime(r['datetime'], '%Y-%m-%d %H:%M:%S') <= now:
-                        triggered.append(r)
-                except ValueError:
-                    continue
+                reminder_datetime = self._parse_datetime(r['datetime'])
+                if reminder_datetime is not None and reminder_datetime <= now:
+                    triggered.append(r)
 
         # 有週期提醒觸發才更新鍵，避免時間未到時鎖死
         if not weekly_already_fired and any(r.get('weekdays') for r in triggered):
             self._last_weekly_minute_key = minute_key
 
         return triggered
+
+    def _parse_datetime(self, value: Any) -> datetime | None:
+        """
+        解析單次提醒時間並快取結果，避免每秒重複解析相同字串。
+
+        Args:
+            value: 單次提醒時間字串
+
+        Returns:
+            datetime 物件；格式無效時回傳 None
+        """
+        if not isinstance(value, str):
+            return None
+
+        cached = self._datetime_cache.get(value)
+        if cached is not None or value in self._datetime_cache:
+            return cached
+
+        try:
+            parsed = datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            parsed = None
+
+        if len(self._datetime_cache) >= self._datetime_cache_limit:
+            self._datetime_cache.clear()
+        self._datetime_cache[value] = parsed
+        return parsed

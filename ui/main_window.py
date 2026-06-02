@@ -688,10 +688,7 @@ class DigitalClock(Observer):
         # 同步最新視窗位置到 config，再排程儲存
         self.config['window']['x'] = x
         self.config['window']['y'] = y
-        fresh = self.logic.get_config()
-        fresh['window']['x'] = x
-        fresh['window']['y'] = y
-        self.logic.schedule_save(fresh)
+        self.logic.schedule_window_position_save(x, y)
 
 
     def _format_time_str(self, dt: datetime, time_format: str) -> str:

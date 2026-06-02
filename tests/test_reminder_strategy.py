@@ -35,6 +35,12 @@ class TestReminderStrategy(unittest.TestCase):
         result = self.strategy.check(reminders, now)
         self.assertEqual(len(result), 0)
 
+    def test_onetime_reminder_non_string_datetime_skipped(self):
+        reminders = [{'datetime': None, 'message': 'bad', 'weekdays': []}]
+        now = datetime(2025, 1, 1, 9, 0, 0)
+        result = self.strategy.check(reminders, now)
+        self.assertEqual(len(result), 0)
+
     # --- 週期提醒 ---
 
     def test_weekly_reminder_triggered_on_matching_day_and_time(self):

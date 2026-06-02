@@ -79,28 +79,45 @@ class PauseManager:
         Args:
             pomodoro_stop_callback: 用於停止番茄鐘的回調函數
         """
-        new_vacation = not self.get_pause_state('vacation')
         config = self.config
+        new_vacation = not self.get_pause_state('vacation', config=config)
+        events_to_notify: list[tuple[str, bool]] = []
 
         if new_vacation:
             # 開始休假: 停止番茄鐘、記住並暫停提醒
             pomodoro_stop_callback()
+            reminder_was_paused = self.get_pause_state('reminder', config=config)
+            hourly_web_was_paused = self.get_pause_state('hourly_web', config=config)
             config['vacation_previous_state'] = {
-                'reminder_paused': self.get_pause_state('reminder'),
-                'hourly_web_paused': self.get_pause_state('hourly_web')
+                'reminder_paused': reminder_was_paused,
+                'hourly_web_paused': hourly_web_was_paused
             }
-            self.config_manager.save_config(config) # 先儲存狀態
 
-            if not self.get_pause_state('reminder'):
-                self.set_pause_state('reminder', True)
-            if not self.get_pause_state('hourly_web'):
-                self.set_pause_state('hourly_web', True)
+            if not reminder_was_paused:
+                config['reminder_paused'] = True
+                events_to_notify.append((Events.REMINDER_PAUSE_TOGGLED, True))
+            if not hourly_web_was_paused:
+                config.setdefault('hourly_web_reminder', {})['paused'] = True
+                events_to_notify.append((Events.HOURLY_WEB_PAUSE_TOGGLED, True))
         else:
             # 結束休假: 恢復之前的狀態
             prev = config.get('vacation_previous_state', {})
-            if not prev.get('reminder_paused', False) and self.get_pause_state('reminder'):
-                self.set_pause_state('reminder', False)
-            if not prev.get('hourly_web_paused', False) and self.get_pause_state('hourly_web'):
-                self.set_pause_state('hourly_web', False)
+            if (
+                not prev.get('reminder_paused', False)
+                and self.get_pause_state('reminder', config=config)
+            ):
+                config['reminder_paused'] = False
+                events_to_notify.append((Events.REMINDER_PAUSE_TOGGLED, False))
+            if (
+                not prev.get('hourly_web_paused', False)
+                and self.get_pause_state('hourly_web', config=config)
+            ):
+                config.setdefault('hourly_web_reminder', {})['paused'] = False
+                events_to_notify.append((Events.HOURLY_WEB_PAUSE_TOGGLED, False))
 
-        self.set_pause_state('vacation', new_vacation)
+        config['on_vacation'] = new_vacation
+        self.config_manager.save_config(config)
+
+        for event, paused in events_to_notify:
+            self.notify(event, paused)
+        self.notify(Events.VACATION_TOGGLED, new_vacation)

@@ -7,8 +7,9 @@ from .base import CheckStrategy
 class HourlyWebReminderStrategy(CheckStrategy):
     """整點網頁提醒策略。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.last_triggered_hour: int = -1
+        self._last_triggered_hour_key: str = ""
 
     def check(self, config: dict[str, Any], now: datetime) -> bool:
         """
@@ -35,11 +36,12 @@ class HourlyWebReminderStrategy(CheckStrategy):
             return False
 
         current_hour = now.hour
+        current_hour_key = now.strftime("%Y-%m-%d %H")
         start_hour = config.get('start_hour', 8)
         end_hour = config.get('end_hour', 17)
 
-        # 避免同一小時內重複觸發
-        if current_hour == self.last_triggered_hour:
+        # 避免同一日期的小時內重複觸發，但允許隔天同一小時再次觸發
+        if current_hour_key == self._last_triggered_hour_key:
             return False
 
         # 檢查是否在指定時段 (Start <= Current <= End)
@@ -48,6 +50,7 @@ class HourlyWebReminderStrategy(CheckStrategy):
         # 檢查是否在整點的前2分鐘內觸發（確保不錯過，原始邏輯為 <= 1）
         if now.minute <= 1 and in_time_range:
             self.last_triggered_hour = current_hour
+            self._last_triggered_hour_key = current_hour_key
             return True
 
         return False

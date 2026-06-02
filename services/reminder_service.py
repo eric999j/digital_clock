@@ -131,8 +131,13 @@ class ReminderService:
         for r in reminders:
             if r.get('weekdays'): # 保留週期性提醒
                 active_reminders.append(r)
-            elif 'datetime' in r and datetime.strptime(r['datetime'], '%Y-%m-%d %H:%M:%S') > now:
-                active_reminders.append(r)
+            elif 'datetime' in r:
+                try:
+                    reminder_time = datetime.strptime(r['datetime'], '%Y-%m-%d %H:%M:%S')
+                except (TypeError, ValueError):
+                    continue
+                if reminder_time > now:
+                    active_reminders.append(r)
 
         if len(active_reminders) < original_count:
             config['reminders'] = active_reminders
