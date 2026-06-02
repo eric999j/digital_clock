@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, call
 
-from services.pause_manager import PauseManager
 from core.events import Events
+from services.pause_manager import PauseManager
 
 
 class TestPauseManager(unittest.TestCase):
