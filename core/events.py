@@ -24,6 +24,12 @@ class Events:
     # 休假模式事件
     VACATION_TOGGLED = 'vacation_toggled'
 
+    # 休假排程事件
+    VACATION_SCHEDULE_ADDED = 'vacation_schedule_added'
+    VACATION_SCHEDULE_DELETED = 'vacation_schedule_deleted'
+    VACATION_SCHEDULE_UPDATED = 'vacation_schedule_updated'
+
     # UI 開窗請求（由 ClockLogic 發出，UI Observer 處理）
     OPEN_REMINDER_WINDOW = 'open_reminder_window'
     OPEN_HOURLY_WEB_WINDOW = 'open_hourly_web_window'
+    OPEN_VACATION_SCHEDULE_WINDOW = 'open_vacation_schedule_window'

@@ -72,12 +72,18 @@ class PauseManager:
         new_paused = not self.get_pause_state(key)
         self.set_pause_state(key, new_paused)
 
-    def toggle_vacation(self, pomodoro_stop_callback: Callable[[], None]) -> None:
+    def toggle_vacation(
+        self,
+        pomodoro_stop_callback: Callable[[], None],
+        source: str = 'manual',
+    ) -> None:
         """
         切換休假模式。
 
         Args:
             pomodoro_stop_callback: 用於停止番茄鐘的回調函數
+            source: 觸發來源，`'manual'` 表示使用者操作、`'schedule'` 表示排程自動觸發。
+                僅用來記錄，供 `VacationScheduleService` 判斷是否可自動離開休假。
         """
         config = self.config
         new_vacation = not self.get_pause_state('vacation', config=config)
@@ -92,6 +98,7 @@ class PauseManager:
                 'reminder_paused': reminder_was_paused,
                 'hourly_web_paused': hourly_web_was_paused
             }
+            config['on_vacation_source'] = source
 
             if not reminder_was_paused:
                 config['reminder_paused'] = True
@@ -114,6 +121,7 @@ class PauseManager:
             ):
                 config.setdefault('hourly_web_reminder', {})['paused'] = False
                 events_to_notify.append((Events.HOURLY_WEB_PAUSE_TOGGLED, False))
+            config.pop('on_vacation_source', None)
 
         config['on_vacation'] = new_vacation
         self.config_manager.save_config(config)
@@ -121,3 +129,18 @@ class PauseManager:
         for event, paused in events_to_notify:
             self.notify(event, paused)
         self.notify(Events.VACATION_TOGGLED, new_vacation)
+
+    def get_vacation_source(self, config: dict[str, Any] | None = None) -> str | None:
+        """
+        取得目前休假模式的觸發來源。
+
+        Args:
+            config: 可選的設定快照；未提供時才從 ConfigManager 讀取
+
+        Returns:
+            `'manual'` / `'schedule'` / `None`（未在休假中或未記錄）
+        """
+        config_data = config if config is not None else self.config
+        if not config_data.get('on_vacation'):
+            return None
+        return config_data.get('on_vacation_source')

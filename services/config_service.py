@@ -112,6 +112,7 @@ class ConfigManager:
                 "milk_tea": {"bg": "#6B4226", "fg": "#F5EAD8", "name": "柔和奶茶"}
             },
             "reminders": [],
+            "vacation_schedules": [],
             "hourly_web_reminder": {
                 "enabled": False,
                 "url": "",

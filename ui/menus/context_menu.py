@@ -17,9 +17,13 @@ class ContextMenu(Menu):
 
     def _build_menu(self) -> None:
         """建立選單項目。"""
-        # 開始休假/開始工作
-        vacation_label = "開始工作" if self.logic.is_on_vacation() else "開始休假"
-        self.add_command(label=vacation_label, command=self.logic.toggle_vacation)
+        # 休假模式 (cascade) — 由 main_window 在建立 VacationMenu 後掛入
+        # 這裡先留空 cascade，label 固定「休假模式」；子項與狀態由 VacationMenu 管理
+        # 為避免 main_window 需要重新排序，直接在此加入 placeholder cascade
+        placeholder = Menu(self, tearoff=0)
+        placeholder.add_command(label="載入中…", state="disabled")
+        self.add_cascade(label="休假模式", menu=placeholder)
+        self._vacation_placeholder = placeholder
         self.add_separator()
 
         # 番茄鐘

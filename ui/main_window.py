@@ -16,6 +16,7 @@ from core.events import Events
 from core.observer import Observer
 from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
+from ui.menus.vacation_menu import VacationMenu
 
 if TYPE_CHECKING:
     from core.container import ServiceContainer
@@ -130,8 +131,12 @@ class DigitalClock(Observer):
             Events.HOURLY_WEB_PAUSE_TOGGLED: self._on_hourly_web_pause_toggled,
             Events.REMINDER_PAUSE_TOGGLED: self._on_reminder_pause_toggled,
             Events.VACATION_TOGGLED: self._on_vacation_toggled,
+            Events.VACATION_SCHEDULE_ADDED: self._on_vacation_schedule_added,
+            Events.VACATION_SCHEDULE_DELETED: self._on_vacation_schedule_deleted,
+            Events.VACATION_SCHEDULE_UPDATED: self._on_vacation_schedule_updated,
             Events.OPEN_REMINDER_WINDOW: self._on_open_reminder_window,
             Events.OPEN_HOURLY_WEB_WINDOW: self._on_open_hourly_web_window,
+            Events.OPEN_VACATION_SCHEDULE_WINDOW: self._on_open_vacation_schedule_window,
         }
 
     def update(self, event: str, *args: Any, **kwargs: Any) -> None:
@@ -204,11 +209,20 @@ class DigitalClock(Observer):
             logger.warning("Error updating reminder menu: %s", e)
 
     def _on_vacation_toggled(self, is_vacation: bool, *args) -> None:
-        label = "開始工作" if is_vacation else "開始休假"
-        try:
-            self.context_menu.entryconfigure(0, label=label)
-        except Exception as e:
-            logger.warning("Error updating vacation menu: %s", e)
+        # 委派 VacationMenu 自行刷新，避免直接操作 cascade 索引
+        self._update_vacation_menu()
+
+    def _on_vacation_schedule_added(self, *args) -> None:
+        self._show_info_after_idle("成功", "休假排程已新增！")
+        self._update_vacation_menu()
+
+    def _on_vacation_schedule_deleted(self, *args) -> None:
+        self._show_info_after_idle("成功", "休假排程已刪除。")
+        self._update_vacation_menu()
+
+    def _on_vacation_schedule_updated(self, *args) -> None:
+        # 由 VacationScheduleService 自動清理過期排程時觸發，僅需靜默更新選單
+        self._update_vacation_menu()
 
     def _on_open_reminder_window(self, reminder_to_edit: dict[str, Any] | None = None, *args) -> None:
         """開啟設定提醒的視窗。"""
@@ -238,6 +252,20 @@ class DigitalClock(Observer):
                 HourlyWebWindow(self.root, self.logic.update_hourly_web_reminder, theme, current_config, geometry=geometry)
             except Exception as e:
                 logger.error("Error opening hourly web window: %s", e)
+
+        self.root.after_idle(open_window)
+
+    def _on_open_vacation_schedule_window(self, *args) -> None:
+        """開啟新增休假排程視窗。"""
+        from ui.vacation_schedule_window import VacationScheduleWindow
+
+        def open_window() -> None:
+            try:
+                config = self.logic.get_config()
+                theme = config['themes'].get(config['appearance']['theme'])
+                VacationScheduleWindow(self.root, self.logic.add_vacation_schedule, theme)
+            except Exception as e:
+                logger.error("Error opening vacation schedule window: %s", e)
 
         self.root.after_idle(open_window)
 
@@ -317,6 +345,14 @@ class DigitalClock(Observer):
         self.pomodoro_menu = self.context_menu.pomodoro_menu
         self.hourly_web_menu = self.context_menu.hourly_web_menu
 
+        # 休假模式 cascade：置換 ContextMenu 中的 placeholder（index 0）
+        self.vacation_menu = VacationMenu(self.context_menu, self)
+        self._update_menu_colors(self.vacation_menu)
+        try:
+            self.context_menu.entryconfigure(0, menu=self.vacation_menu)
+        except Exception as e:
+            logger.warning("Error attaching vacation menu: %s", e)
+
         # 週期提醒 (插入在整點網頁之前)
         self.reminder_menu = ReminderMenu(self.context_menu, self)
         self._update_menu_colors(self.reminder_menu)
@@ -329,6 +365,15 @@ class DigitalClock(Observer):
         # 委派給 ReminderMenu
         if hasattr(self, 'reminder_menu'):
             self.reminder_menu.update_menu()
+
+    def _update_vacation_menu(self) -> None:
+        """更新休假模式選單的內容。"""
+        if hasattr(self, 'vacation_menu'):
+            try:
+                self.vacation_menu.update_menu()
+                self._update_menu_colors(self.vacation_menu)
+            except Exception as e:
+                logger.warning("Error updating vacation menu: %s", e)
 
     def update_pomodoro_display(self, phase: str, remaining: int | None) -> None:
         """
@@ -415,6 +460,27 @@ class DigitalClock(Observer):
 
         self.root.after_idle(confirm_delete)
 
+    def _confirm_delete_vacation_schedule(self, schedule: dict[str, Any]) -> None:
+        """
+        彈出確認對話框來刪除休假排程。
+
+        Args:
+            schedule: 要刪除的排程
+        """
+        start = schedule.get('start', '')
+        end = schedule.get('end', '')
+        note = str(schedule.get('note', '')).strip()
+        detail = f"日期範圍: {start} ~ {end}"
+        if note:
+            detail += f"\n備註: {note}"
+        msg = f"您確定要刪除以下休假排程嗎？\n\n{detail}"
+
+        def confirm_delete() -> None:
+            if messagebox.askyesno("確認刪除", msg, parent=self.root):
+                self.logic.delete_vacation_schedule(schedule)
+
+        self.root.after_idle(confirm_delete)
+
     def _show_context_menu(self, event: tk.Event) -> None:
         """
         在指定位置顯示右鍵選單。
@@ -424,6 +490,7 @@ class DigitalClock(Observer):
         """
         try:
             self._update_reminder_menu()
+            self._update_vacation_menu()
             # self._update_pomodoro_menu_label() # 已移除，改為即時更新子選單
             self.context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:

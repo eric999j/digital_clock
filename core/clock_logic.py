@@ -13,6 +13,7 @@ from services.keyboard_service import KeyboardService
 from services.pause_manager import PauseManager
 from services.pomodoro_service import PomodoroService
 from services.reminder_service import ReminderService
+from services.vacation_schedule_service import VacationScheduleService
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -54,6 +55,14 @@ class ClockLogic:
             }
         )
 
+        # 休假排程服務（依賴 pause_manager 與 pomodoro.stop）
+        self.vacation_schedule_service = VacationScheduleService(
+            config_manager,
+            self.notify_observers,
+            self.pause_manager,
+            self.pomodoro.stop,
+        )
+
         self.is_hidden: bool = False
 
     def add_observer(self, observer: Observer) -> None:
@@ -80,6 +89,7 @@ class ClockLogic:
     def start(self) -> None:
         """啟動所有背景服務和初始檢查。"""
         self.reminder_service.remove_expired_reminders()
+        self.vacation_schedule_service.check()
         self.keyboard_service.start()
 
     def get_config(self) -> dict[str, Any]:
@@ -196,6 +206,9 @@ class ClockLogic:
         # 整點網頁提醒
         self.hourly_service.check(now=check_time, config=config_snapshot)
 
+        # 休假排程（自動進入/離開休假模式、清理過期排程）
+        self.vacation_schedule_service.check(now=check_time, config=config_snapshot)
+
         # 一般提醒
         is_paused = self.pause_manager.get_pause_state('reminder', config=config_snapshot)
         self.reminder_service.check_reminders(is_paused, now=check_time, config=config_snapshot)
@@ -220,6 +233,22 @@ class ClockLogic:
 
     def is_on_vacation(self) -> bool:
         return self.pause_manager.get_pause_state('vacation')
+
+    def add_vacation_schedule(self, start: str, end: str, note: str = "") -> None:
+        """新增休假排程。"""
+        self.vacation_schedule_service.add_schedule(start, end, note)
+
+    def delete_vacation_schedule(self, schedule: dict[str, Any]) -> None:
+        """刪除休假排程。"""
+        self.vacation_schedule_service.delete_schedule(schedule)
+
+    def list_vacation_schedules(self) -> list[dict[str, Any]]:
+        """列出所有休假排程。"""
+        return self.vacation_schedule_service.list_schedules()
+
+    def open_vacation_schedule_window(self) -> None:
+        """請求 UI 開啟休假排程設定視窗（透過事件解耦）。"""
+        self.notify_observers(Events.OPEN_VACATION_SCHEDULE_WINDOW)
 
     def open_reminder_window(self, reminder_to_edit: dict[str, Any] | None = None) -> None:
         """請求 UI 開啟設定提醒的視窗（透過事件解耦，由 UI Observer 實作）。"""
