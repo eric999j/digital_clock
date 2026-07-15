@@ -173,8 +173,7 @@ class DigitalClock(Observer):
 
         # 訊息為空時改用標題
         display_text = reminder.get('message') or reminder.get('title', '') or '提醒時間到了'
-        theme = self.config['themes'].get(self.config['appearance']['theme'])
-        popup = show_reminder_popup_window(self.root, display_text, theme)
+        popup = show_reminder_popup_window(self.root, display_text)
         if popup is not None:
             self._reminder_popups.append(popup)
             popup.bind('<Destroy>', lambda event, window=popup: self._forget_reminder_popup(window), add='+')

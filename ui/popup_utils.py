@@ -46,6 +46,15 @@ def _insert_message(text_widget: tk.Text, message: str, link_color: str) -> None
             text_widget.insert(tk.END, part)
 
 
+def _estimate_display_lines(message: str, chars_per_line: int = 38) -> int:
+    """估算訊息在給定字元寬度下的視覺行數（中文字符算 2 單位）。"""
+    total = 0
+    for line in (message.splitlines() or ['']):
+        weight = sum(2 if ord(c) > 127 else 1 for c in line)
+        total += max(1, (weight + chars_per_line - 1) // chars_per_line)
+    return total
+
+
 def show_reminder_popup_window(
     parent: tk.Misc,
     message: str,
@@ -61,57 +70,65 @@ def show_reminder_popup_window(
     Returns:
         建立成功的 Toplevel；建立失敗時回傳 None。
     """
-    colors = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
+    use_theme = theme is not None
+    colors = theme if use_theme else None
     try:
         popup = tk.Toplevel(parent)
         popup.title("提醒")
         popup.attributes("-topmost", True)
         popup.transient(parent)
         popup.resizable(False, False)
-        popup.configure(bg=colors['bg'])
+        if use_theme and colors:
+            popup.configure(bg=colors['bg'])
 
-        frame = tk.Frame(popup, padx=18, pady=14, bg=colors['bg'])
+        frame_kwargs: dict = {'padx': 18, 'pady': 14}
+        if use_theme and colors:
+            frame_kwargs['bg'] = colors['bg']
+        frame = tk.Frame(popup, **frame_kwargs)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        text_widget = tk.Text(
-            frame,
+        sys_bg = frame.cget('background')
+        text_kwargs: dict = dict(
             wrap=tk.WORD,
-            width=50,
-            height=8,
+            width=38,
+            height=1,
             font=("Microsoft JhengHei UI", 11),
             borderwidth=0,
             highlightthickness=0,
-            background=colors['bg'],
-            foreground=colors['fg'],
             cursor="arrow",
         )
+        if use_theme and colors:
+            text_kwargs['background'] = colors['bg']
+            text_kwargs['foreground'] = colors['fg']
+        else:
+            text_kwargs['background'] = sys_bg
+        text_widget = tk.Text(frame, **text_kwargs)
         text_widget.pack(fill=tk.BOTH, expand=True)
-        link_color = '#74B9FF' if colors['bg'].lower() in {'#1e3a5f', '#2c3e50', '#1c1c1c', '#3a1a08', '#2d1b10', '#6b4226'} else '#0000EE'
+        if use_theme and colors:
+            link_color = '#74B9FF' if colors['bg'].lower() in {'#1e3a5f', '#2c3e50', '#1c1c1c', '#3a1a08', '#2d1b10', '#6b4226'} else '#0000EE'
+        else:
+            link_color = '#0000EE'
         _insert_message(text_widget, message, link_color)
+        # 依訊息內容自動調整高度，最多 6 行
+        text_widget.configure(height=min(max(1, _estimate_display_lines(message)), 6))
         text_widget.bind("<Key>", lambda e: "break")
         text_widget.configure(insertwidth=0)
 
-        close_button = tk.Button(
-            frame,
-            text="關閉",
-            width=10,
-            command=popup.destroy,
-            bg=colors['bg'],
-            fg=colors['fg'],
-            activebackground=colors['fg'],
-            activeforeground=colors['bg'],
-        )
+        btn_kwargs: dict = {'text': '關閉', 'width': 10, 'command': popup.destroy}
+        if use_theme and colors:
+            btn_kwargs.update({'bg': colors['bg'], 'fg': colors['fg'],
+                               'activebackground': colors['fg'], 'activeforeground': colors['bg']})
+        close_button = tk.Button(frame, **btn_kwargs)
         close_button.pack(pady=(10, 0))
 
-        parent.update_idletasks()
         popup.update_idletasks()
         width = popup.winfo_width()
         height = popup.winfo_height()
-        x = max(0, parent.winfo_x() + parent.winfo_width() - width)
-        y = parent.winfo_y() - height - 8
-        if y < 0:
-            y = parent.winfo_y() + parent.winfo_height() + 8
-        popup.geometry(f"+{x}+{max(0, y)}")
+        screen_w = popup.winfo_screenwidth()
+        screen_h = popup.winfo_screenheight()
+        x = (screen_w - width) // 2
+        y = (screen_h - height) // 2
+        popup.geometry(f"+{max(0, x)}+{max(0, y)}")
         popup.lift()
         return popup
     except tk.TclError as e:
