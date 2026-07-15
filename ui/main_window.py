@@ -113,8 +113,14 @@ class DigitalClock(Observer):
             self._bind_events()
 
             self.apply_theme(self.config['appearance']['theme'], save=False)
+            # withdraw 狀態下 Canvas 仍可能回報 1x1。先以全透明方式顯示並
+            # 處理 Configure 事件，待取得最終尺寸、完成首次繪製後才顯示給使用者。
+            self.root.attributes('-alpha', 0.0)
+            self.root.deiconify()
+            self.root.update()
             self.logic.start()
             self.update_time()
+            self.root.attributes('-alpha', self.config['window']['alpha_focused'])
             self.enforce_topmost()
         except Exception as e:
             messagebox.showerror("初始化錯誤", f"無法啟動時鐘：{e}")
@@ -307,6 +313,9 @@ class DigitalClock(Observer):
 
     def _setup_window(self) -> None:
         """初始化視窗屬性、大小與位置。"""
+        # 初始化期間先保持隱藏，待 Canvas 完成配置與首次繪製後再顯示，
+        # 防止使用者看見以預設 1x1 Canvas 座標繪出的瞬間畫面。
+        self.root.withdraw()
         self.root.overrideredirect(True)
         self.root.attributes('-topmost', True)
 
