@@ -44,7 +44,8 @@ class PomodoroService:
         if self.phase == "IDLE":
             return
 
-        self.remaining_seconds -= 1
+        # 先封頂為 0 再通知 UI，避免階段切換前短暫顯示負數倒數。
+        self.remaining_seconds = max(0, self.remaining_seconds - 1)
         self._emit("on_tick", self.phase, self.remaining_seconds)
 
         if self.remaining_seconds <= 0:

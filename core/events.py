@@ -33,3 +33,6 @@ class Events:
     OPEN_REMINDER_WINDOW = 'open_reminder_window'
     OPEN_HOURLY_WEB_WINDOW = 'open_hourly_web_window'
     OPEN_VACATION_SCHEDULE_WINDOW = 'open_vacation_schedule_window'
+
+    # 系統快捷鍵事件
+    SCREENSHOT_TRIGGERED = 'screenshot_triggered'

@@ -30,6 +30,17 @@ class TestPomodoroService(unittest.TestCase):
         self.service.tick()
         self.assertEqual(self.service.remaining_seconds, initial_seconds - 1)
 
+    def test_tick_does_not_emit_negative_remaining_seconds(self):
+        ticks = []
+        self.service.callbacks = {'on_tick': lambda phase, remaining: ticks.append(remaining)}
+        self.service.start_focus()
+        self.service.remaining_seconds = 1
+
+        self.service.tick()
+
+        self.assertEqual(ticks, [0])
+        self.assertGreaterEqual(self.service.remaining_seconds, 0)
+
     def test_phase_completion_cycle(self):
         # Simulate end of focus
         self.service.start_focus()

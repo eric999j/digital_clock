@@ -26,6 +26,7 @@ class KeyboardService:
         self.KEY_MAP: dict[Any, str] = {}
         self.WIN_SCREENSHOT_KEYS: set[str] = set()
         self.listener: keyboard.Listener | None = None
+        self._combination_triggered = False
 
         self._load_config()
 
@@ -75,5 +76,9 @@ class KeyboardService:
     def _check_key_combination(self) -> None:
         """檢查是否觸發組合鍵。"""
         # 截圖組合鍵 (Win+Shift+S)
-        if self.WIN_SCREENSHOT_KEYS.issubset(self.pressed_keys):
+        is_pressed = self.WIN_SCREENSHOT_KEYS.issubset(self.pressed_keys)
+        if is_pressed and not self._combination_triggered:
             self.on_screenshot()
+            self._combination_triggered = True
+        elif not is_pressed:
+            self._combination_triggered = False

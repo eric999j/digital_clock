@@ -2,6 +2,7 @@
 import copy
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -149,19 +150,30 @@ class ConfigManager:
         Args:
             config: 設定字典
         """
+        temp_file = self.config_file.with_name(f'{self.config_file.name}.tmp')
         try:
             # 確保目錄存在
             self.config_dir.mkdir(parents=True, exist_ok=True)
 
             config_to_save = copy.deepcopy(config)
-            with open(self.config_file, 'w', encoding='utf-8') as f:
+            with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(config_to_save, f, indent=4, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # 以替換方式提交完整檔案，避免程式在寫入途中中斷留下半份 JSON。
+            os.replace(temp_file, self.config_file)
 
             # 寫入成功後同步更新快取，避免下一次 load 立即重讀檔案
             self._config_cache = config_to_save
             self._cache_mtime_ns = self._get_file_mtime_ns()
         except (OSError, TypeError, ValueError) as e:
             logger.error("Error saving config: %s", e)
+        finally:
+            try:
+                temp_file.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Unable to clean temporary config file: %s", temp_file)
 
     def load_config(self, read_only: bool = False) -> dict[str, Any]:
         """

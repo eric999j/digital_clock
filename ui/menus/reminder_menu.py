@@ -58,7 +58,7 @@ class ReminderMenu(Menu):
 
             for r in sorted_reminders:
                 # 優先使用標題，若無標題才使用內容
-                display_text = r.get('title', '').strip() or r['message']
+                display_text = r.get('title', '').strip() or r.get('message', '') or '(未命名提醒)'
 
                 if r.get('weekdays'):
                     weekdays_str = "".join([d.replace('週', '') for d in r['weekdays']])

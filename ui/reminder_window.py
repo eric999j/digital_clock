@@ -195,6 +195,11 @@ class ReminderWindow(tk.Toplevel):
             title = self.title_entry.get().strip()
             message = self.msg_entry.get("1.0", "end-1c").strip() # 去除多餘的換行和空白
 
+            if not title and not message:
+                messagebox.showerror("錯誤", "請至少輸入提醒標題或訊息。", parent=self)
+                self.msg_entry.focus_set()
+                return
+
             selected_weekdays = [day for day, var in self.weekday_vars.items() if var.get()]
 
             if selected_weekdays:

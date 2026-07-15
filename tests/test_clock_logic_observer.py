@@ -118,6 +118,40 @@ class TestClockLogicScheduledSave(unittest.TestCase):
         self.assertEqual(saved_config['window']['y'], 40)
         self.assertEqual(saved_config['reminders'], [{'message': 'keep'}])
 
+    def test_flush_pending_save_cancels_callback_and_writes_immediately(self):
+        """關閉前沖刷延遲儲存，避免最後一次設定變更遺失。"""
+        logic = self._make_logic_stub()
+        latest_config = {'window': {'x': 1, 'y': 2}}
+        logic.config_manager.load_config.return_value = latest_config
+
+        logic.schedule_window_position_save(30, 40)
+        logic.flush_pending_save()
+
+        self.assertEqual(logic.ui.cancelled_ids, ['after-1'])
+        logic.config_manager.load_config.assert_called_once()
+        logic.config_manager.save_config.assert_called_once_with(latest_config)
+        self.assertEqual(latest_config['window'], {'x': 30, 'y': 40})
+
+
+class TestClockLogicScreenshotDispatch(unittest.TestCase):
+    """確保背景鍵盤執行緒只排程 UI 事件，不直接操作觀察者。"""
+
+    def test_screenshot_event_is_dispatched_via_ui_scheduler(self):
+        from core.clock_logic import ClockLogic
+        from core.events import Events
+
+        logic = ClockLogic.__new__(ClockLogic)
+        logic.ui = MagicMock()
+        logic.notify_observers = MagicMock()
+
+        logic._on_screenshot_triggered()
+
+        logic.ui.root.after.assert_called_once()
+        delay, callback = logic.ui.root.after.call_args.args
+        self.assertEqual(delay, 0)
+        callback()
+        logic.notify_observers.assert_called_once_with(Events.SCREENSHOT_TRIGGERED)
+
 
 if __name__ == '__main__':
     unittest.main()

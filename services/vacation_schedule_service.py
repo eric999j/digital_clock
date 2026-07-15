@@ -1,4 +1,5 @@
 """休假排程服務：管理排定的休假並依日期自動切換休假模式。"""
+import copy
 import logging
 from collections.abc import Callable
 from datetime import date, datetime
@@ -127,8 +128,9 @@ class VacationScheduleService:
         if config is not None and not config.get('vacation_schedules'):
             return
 
-        # 實際檢查與寫入時，使用可寫的 config（深拷貝，不影響 read_only 快取）
-        config_data = self.config_manager.load_config()
+        # 使用同一輪檢查已取得的快照，複製一份供 auto_started 標記與清理使用。
+        # 這樣可避免每秒再次 stat/load 設定檔，也不會修改 ConfigManager 的唯讀快取。
+        config_data = copy.deepcopy(config) if config is not None else self.config
         schedules = config_data.get('vacation_schedules', [])
         if not schedules:
             return

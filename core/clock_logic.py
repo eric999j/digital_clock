@@ -172,6 +172,26 @@ class ClockLogic:
         else:
             self.save_current_config()
 
+    def flush_pending_save(self) -> None:
+        """立即寫入尚未落盤的設定。
+
+        關閉程式時需要先沖刷延遲儲存，避免使用者剛變更主題、字型或視窗
+        位置就關閉程式而遺失設定。
+        """
+        save_after_id = getattr(self, '_save_after_id', None)
+        if save_after_id is not None:
+            try:
+                self.ui.after_cancel(save_after_id)
+            except Exception as e:
+                logger.debug("Cancel pending config save failed: %s", e)
+            self._save_after_id = None
+
+        if (
+            getattr(self, '_pending_config', None) is not None
+            or getattr(self, '_pending_window_position', None) is not None
+        ):
+            self._do_save()
+
     def _pomodoro_phase_change(self, phase: str) -> None:
         self.notify_observers(Events.POMODORO_PHASE_CHANGE, phase)
 
@@ -182,7 +202,11 @@ class ClockLogic:
         self.notify_observers(Events.POMODORO_PHASE_COMPLETE, phase)
 
     def _on_screenshot_triggered(self) -> None:
-        logger.info("Screenshot shortcut triggered (Win+Shift+S)")
+        """將截圖事件安全轉送到 Tk 主執行緒。"""
+        logger.info("Screenshot shortcut triggered")
+        root = getattr(self.ui, 'root', None)
+        if root is not None:
+            root.after(0, lambda: self.notify_observers(Events.SCREENSHOT_TRIGGERED))
 
     # --- 代理方法 (Delegates) ---
 
@@ -260,6 +284,8 @@ class ClockLogic:
 
     def on_close(self) -> None:
         """應用程式關閉時的清理工作。"""
+        self.flush_pending_save()
+
         # 停止服務
         if hasattr(self, 'keyboard_service'):
             self.keyboard_service.stop()

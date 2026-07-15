@@ -84,6 +84,9 @@ class DigitalClock(Observer):
         self._current_display_text: str = ""  # 當前顯示的時間文字
         self._animation_active: bool = False  # 是否正在執行動畫
         self._char_animations: dict[int, dict[str, Any]] = {}  # 每個字元位置的動畫狀態
+        self._background_item: int | None = None
+        self._reminder_popups: list[tk.Toplevel] = []
+        self._last_logic_tick: datetime | None = None
 
         # --- 性能優化緩存 ---
         self._canvas_items: list[dict[str, Any]] = []  # 存儲 Canvas ID 與狀態: [{'main': id, 'sub': id, 'char': 'x'}]
@@ -137,6 +140,7 @@ class DigitalClock(Observer):
             Events.OPEN_REMINDER_WINDOW: self._on_open_reminder_window,
             Events.OPEN_HOURLY_WEB_WINDOW: self._on_open_hourly_web_window,
             Events.OPEN_VACATION_SCHEDULE_WINDOW: self._on_open_vacation_schedule_window,
+            Events.SCREENSHOT_TRIGGERED: self._on_screenshot_triggered,
         }
 
     def update(self, event: str, *args: Any, **kwargs: Any) -> None:
@@ -165,15 +169,48 @@ class DigitalClock(Observer):
         messagebox.showinfo("番茄鐘", f"階段結束，進入 {new_phase}")
 
     def _on_reminder_due(self, reminder: dict[str, Any], *args) -> None:
-        from multiprocessing import Process
-
-        from ui.popup_utils import show_reminder_popup
+        from ui.popup_utils import show_reminder_popup_window
 
         # 訊息為空時改用標題
-        display_text = reminder.get('message') or reminder.get('title', '')
-        # 使用獨立進程顯示提醒，避免阻塞主線程
-        p = Process(target=show_reminder_popup, args=(display_text,))
-        p.start()
+        display_text = reminder.get('message') or reminder.get('title', '') or '提醒時間到了'
+        theme = self.config['themes'].get(self.config['appearance']['theme'])
+        popup = show_reminder_popup_window(self.root, display_text, theme)
+        if popup is not None:
+            self._reminder_popups.append(popup)
+            popup.bind('<Destroy>', lambda event, window=popup: self._forget_reminder_popup(window), add='+')
+            # 避免長時間未關閉提醒造成視窗堆積。
+            while len(self._reminder_popups) > 5:
+                oldest = self._reminder_popups.pop(0)
+                if oldest.winfo_exists():
+                    oldest.destroy()
+
+    def _forget_reminder_popup(self, popup: tk.Toplevel) -> None:
+        """從目前的提醒視窗清單移除已關閉的視窗。"""
+        if popup in self._reminder_popups:
+            self._reminder_popups.remove(popup)
+
+    def _on_screenshot_triggered(self, *args: Any) -> None:
+        """截圖時暫時隱藏時鐘，並在設定時間後恢復。"""
+        if self.logic.is_hidden:
+            return
+
+        self.logic.is_hidden = True
+        self.root.withdraw()
+        hide_duration = self.config.get('system', {}).get('hide_duration_ms', 2000)
+        try:
+            duration_ms = max(100, int(hide_duration))
+        except (TypeError, ValueError):
+            duration_ms = 2000
+        self.root.after(duration_ms, self._restore_after_screenshot)
+
+    def _restore_after_screenshot(self) -> None:
+        """恢復截圖前隱藏的時鐘。"""
+        try:
+            self.root.deiconify()
+            self.root.attributes('-topmost', True)
+            self.logic.is_hidden = False
+        except tk.TclError:
+            logger.debug("Clock window was already destroyed before screenshot restore")
 
     def _show_info_after_idle(self, title: str, message: str) -> None:
         """延後顯示訊息框，避免在 Tk callback 中重入 modal 視窗。"""
@@ -357,7 +394,7 @@ class DigitalClock(Observer):
         self.reminder_menu = ReminderMenu(self.context_menu, self)
         self._update_menu_colors(self.reminder_menu)
         # 插入位置計算: Vacation(0), Sep(1), Pomodoro(2), Sep(3) -> Insert at 4
-        self.context_menu.insert_cascade(4, label="週期提醒", menu=self.reminder_menu)
+        self.context_menu.insert_cascade(4, label="提醒", menu=self.reminder_menu)
         self.context_menu.insert_separator(5)
 
     def _update_reminder_menu(self) -> None:
@@ -555,15 +592,42 @@ class DigitalClock(Observer):
 
     def _on_resize(self, event: tk.Event | None = None) -> None:
         """
-        當視窗大小改變時，重新繪製圓角背景。
+        當視窗大小改變時，只更新圓角背景座標。
+
+        避免每次 Configure 事件都刪除並重建整張 Canvas，拖曳或調整字型時
+        可明顯減少 Canvas item 建立與文字重繪。
 
         Args:
             event: 視窗事件
         """
-        if hasattr(self, 'theme_var'): # 確保 theme_var 已初始化
-            self.apply_theme(self.theme_var.get(), save=False)
+        if hasattr(self, 'canvas') and self._background_item is not None:
+            self._redraw_background()
 
-    def _draw_rounded_rect(self, x1: int, y1: int, x2: int, y2: int, radius: int, **kwargs: Any) -> None:
+    def _redraw_background(self) -> None:
+        """依目前 Canvas 尺寸更新背景圓角矩形。"""
+        if self._background_item is None:
+            return
+
+        width = max(1, self.canvas.winfo_width())
+        height = max(1, self.canvas.winfo_height())
+        radius = min(self.CORNER_RADIUS, width // 2, height // 2)
+        self.canvas.coords(
+            self._background_item,
+            *self._rounded_rect_points(0, 0, width, height, radius),
+        )
+
+    @staticmethod
+    def _rounded_rect_points(x1: int, y1: int, x2: int, y2: int, radius: int) -> list[int]:
+        """產生圓角矩形的 Canvas 多邊形座標。"""
+        return [
+            x1 + radius, y1, x1 + radius, y1, x2 - radius, y1, x2 - radius, y1,
+            x2, y1, x2, y1 + radius, x2, y1 + radius, x2, y2 - radius,
+            x2, y2 - radius, x2, y2, x2 - radius, y2, x2 - radius, y2,
+            x1 + radius, y2, x1 + radius, y2, x1, y2, x1, y2 - radius,
+            x1, y2 - radius, x1, y1 + radius, x1, y1 + radius, x1, y1,
+        ]
+
+    def _draw_rounded_rect(self, x1: int, y1: int, x2: int, y2: int, radius: int, **kwargs: Any) -> int:
         """
         在 Canvas 上繪製圓角矩形。
 
@@ -575,13 +639,10 @@ class DigitalClock(Observer):
             radius: 圓角半徑
             **kwargs: 其他繪圖參數
         """
-        self.canvas.create_polygon(
-            x1+radius, y1, x1+radius, y1, x2-radius, y1, x2-radius, y1,
-            x2, y1, x2, y1+radius, x2, y1+radius, x2, y2-radius,
-            x2, y2-radius, x2, y2, x2-radius, y2, x2-radius, y2,
-            x1+radius, y2, x1+radius, y2, x1, y2, x1, y2-radius,
-            x1, y2-radius, x1, y1+radius, x1, y1+radius, x1, y1,
-            smooth=True, **kwargs
+        return self.canvas.create_polygon(
+            *self._rounded_rect_points(x1, y1, x2, y2, radius),
+            smooth=True,
+            **kwargs,
         )
 
     def change_font(self, font_family: str) -> None:
@@ -605,7 +666,7 @@ class DigitalClock(Observer):
             self._draw_static_text(self._current_display_text)
         fresh = self.logic.get_config()
         fresh['appearance']['font_family'] = font_family
-        self.logic.save_current_config(fresh)
+        self.logic.schedule_save(fresh)
 
     def change_time_format(self, time_format: str) -> None:
         """
@@ -620,7 +681,7 @@ class DigitalClock(Observer):
         self._update_display_time()  # 立即更新時間顯示
         fresh = self.logic.get_config()
         fresh['appearance']['time_format'] = time_format
-        self.logic.save_current_config(fresh)
+        self.logic.schedule_save(fresh)
 
     def apply_theme(self, theme_key: str, save: bool = True) -> None:
         """
@@ -639,10 +700,15 @@ class DigitalClock(Observer):
             self.canvas.delete("all")
             self._canvas_items.clear()  # 清除文字項目引用，強制重新建立
             self._last_render_state.clear()
+            self._background_item = None
 
             self.canvas.config(bg=self.transparent_color)
-            self._draw_rounded_rect(0, 0, self.root.winfo_width(), self.root.winfo_height(),
-                                    self.CORNER_RADIUS, fill=bg_color, outline=bg_color)
+            width = max(1, self.root.winfo_width())
+            height = max(1, self.root.winfo_height())
+            radius = min(self.CORNER_RADIUS, width // 2, height // 2)
+            self._background_item = self._draw_rounded_rect(
+                0, 0, width, height, radius, fill=bg_color, outline=bg_color
+            )
 
             # 更新文字標籤顏色（為了相容性保留）
             self.label.config(bg=bg_color, fg=fg_color)
@@ -665,7 +731,7 @@ class DigitalClock(Observer):
             if save:
                 fresh = self.logic.get_config()
                 fresh['appearance']['theme'] = theme_key
-                self.logic.save_current_config(fresh)
+                self.logic.schedule_save(fresh)
 
     def _start_drag(self, event: tk.Event) -> None:
         """
@@ -993,6 +1059,25 @@ class DigitalClock(Observer):
         }
         self._perf_last_log_ts = now_perf
 
+    def _get_next_idle_delay(self, now: datetime) -> int:
+        """計算閒置時的下一次刷新時間，並在動畫前準時喚醒。"""
+        next_second_ms = max(10, 1000 - now.microsecond // 1000)
+        time_format = self.config['appearance'].get('time_format', '24h')
+        format_str = self.TIME_FORMATS['24h'] if time_format == '24h' else self.TIME_FORMATS['12h']
+
+        if '%S' in format_str:
+            lead_window_ms = 800
+            ms_to_next = 1000 - now.microsecond // 1000
+        else:
+            lead_window_ms = max(self.ANIMATION_DURATION_MS, 2000)
+            ms_to_next = (60 - now.second) * 1000 - now.microsecond // 1000
+
+        # 閒置時只在整秒刷新；若動畫即將開始，提前在動畫窗口起點喚醒。
+        until_animation_ms = ms_to_next - lead_window_ms
+        if 0 < until_animation_ms < next_second_ms:
+            return max(10, until_animation_ms)
+        return next_second_ms
+
     def _draw_static_text(self, text: str) -> None:
         """為了相容性保留，轉發至核心渲染引擎。"""
         self._render_clock(text)
@@ -1024,11 +1109,11 @@ class DigitalClock(Observer):
         logic_ms = 0.0
 
         # 每秒執行一次邏輯檢查
-        curr_sec = now.second
-        if not hasattr(self, '_last_logic_tick') or self._last_logic_tick != curr_sec:
+        current_second = now.replace(microsecond=0)
+        if self._last_logic_tick != current_second:
             logic_ran = True
             logic_start = time.perf_counter() if self.PERF_MONITOR_ENABLED else 0.0
-            self._last_logic_tick = curr_sec
+            self._last_logic_tick = current_second
             self.logic.check_reminders(now)
             # 番茄鐘每秒 tick
             self.logic.pomodoro.tick()
@@ -1045,7 +1130,7 @@ class DigitalClock(Observer):
         else:
             idle_elapsed_ms = (scheduler_now_perf - self._last_active_ui_ts) * 1000.0
             if idle_elapsed_ms >= self.RELAX_AFTER_MS:
-                delay = self.RELAXED_IDLE_REFRESH_MS
+                delay = self._get_next_idle_delay(now)
             else:
                 delay = self.IDLE_REFRESH_MS
 
