@@ -4,6 +4,7 @@
 import logging
 import re
 import tkinter as tk
+import tkinter.font as tkfont
 import webbrowser
 from tkinter import messagebox
 
@@ -74,65 +75,109 @@ def show_reminder_popup_window(
     Returns:
         建立成功的 Toplevel；建立失敗時回傳 None。
     """
-    use_theme = theme is not None
-    colors = theme if use_theme else None
+    # 系統字型
+    try:
+        sys_font = tkfont.nametofont("TkDefaultFont").actual()['family']
+    except Exception:
+        sys_font = "Microsoft JhengHei UI"
+
+    bg = theme['bg'] if theme else None
+    fg = theme['fg'] if theme else None
+
+    # 分隔線顏色（依背景亮暗微調）
+    sep_color = "#cccccc"
+    if bg:
+        try:
+            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
+            brightness = (r * 299 + g * 587 + b * 114) / 1000
+            adj = 45
+            if brightness < 128:
+                sep_color = f"#{min(255,r+adj):02x}{min(255,g+adj):02x}{min(255,b+adj):02x}"
+            else:
+                sep_color = f"#{max(0,r-adj):02x}{max(0,g-adj):02x}{max(0,b-adj):02x}"
+        except Exception:
+            pass
+
+    # 標題圖示與超連結顏色
+    icon_char = {"提醒": "🔔", "成功": "✓", "錯誤": "✕", "設定錯誤": "⚠", "警告": "⚠"}.get(title, "ℹ")
+    dark_bgs = {'#1e3a5f', '#2c3e50', '#1c1c1c', '#3a1a08', '#2d1b10', '#6b4226'}
+    link_color = '#74B9FF' if (bg and bg.lower() in dark_bgs) else '#0066CC'
+
     try:
         popup = tk.Toplevel(parent)
         popup.title(title)
         popup.attributes("-topmost", True)
         popup.transient(parent)
         popup.resizable(False, False)
-        if use_theme and colors:
-            popup.configure(bg=colors['bg'])
+        if bg:
+            popup.configure(bg=bg)
 
-        frame_kwargs: dict = {'padx': 18, 'pady': 14}
-        if use_theme and colors:
-            frame_kwargs['bg'] = colors['bg']
-        frame = tk.Frame(popup, **frame_kwargs)
-        frame.pack(fill=tk.BOTH, expand=True)
+        # 外層容器
+        outer = tk.Frame(popup, padx=22, pady=18)
+        if bg:
+            outer.configure(bg=bg)
+        outer.pack(fill=tk.BOTH, expand=True)
+        actual_bg = outer.cget('bg')
+        actual_fg = fg or 'black'
 
-        sys_bg = frame.cget('background')
-        text_kwargs: dict = dict(
-            wrap=tk.WORD,
-            width=38,
-            height=1,
-            font=("Microsoft JhengHei UI", 11),
-            borderwidth=0,
-            highlightthickness=0,
-            cursor="arrow",
+        # ── 標題列（圖示 + 標題文字）──
+        header = tk.Frame(outer, bg=actual_bg)
+        header.pack(fill=tk.X)
+        tk.Label(
+            header, text=icon_char,
+            font=(sys_font, 15), bg=actual_bg, fg=actual_fg,
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            header, text=f"  {title}",
+            font=(sys_font, 12, 'bold'), bg=actual_bg, fg=actual_fg,
+        ).pack(side=tk.LEFT)
+
+        # ── 分隔線 ──
+        tk.Frame(outer, bg=sep_color, height=1).pack(fill=tk.X, pady=(10, 12))
+
+        # ── 訊息內容 ──
+        if message:
+            text_widget = tk.Text(
+                outer,
+                wrap=tk.WORD,
+                width=36,
+                height=1,
+                font=(sys_font, 11),
+                borderwidth=0,
+                highlightthickness=0,
+                cursor="arrow",
+                bg=actual_bg,
+                fg=actual_fg,
+            )
+            text_widget.pack(fill=tk.BOTH, expand=True)
+            _insert_message(text_widget, message, link_color)
+            text_widget.configure(height=min(max(1, _estimate_display_lines(message)), 6))
+            text_widget.bind("<Key>", lambda e: "break")
+            text_widget.configure(insertwidth=0)
+
+        # ── 按鈕列 ──
+        btn_area = tk.Frame(outer, bg=actual_bg)
+        btn_area.pack(fill=tk.X, pady=(14, 0))
+        btn = tk.Button(
+            btn_area,
+            text=ok_text,
+            width=8,
+            font=(sys_font, 10),
+            relief='groove',
+            cursor='hand2',
+            command=popup.destroy,
+            bg=actual_bg,
+            fg=actual_fg,
+            activebackground=actual_fg,
+            activeforeground=actual_bg,
         )
-        if use_theme and colors:
-            text_kwargs['background'] = colors['bg']
-            text_kwargs['foreground'] = colors['fg']
-        else:
-            text_kwargs['background'] = sys_bg
-        text_widget = tk.Text(frame, **text_kwargs)
-        text_widget.pack(fill=tk.BOTH, expand=True)
-        if use_theme and colors:
-            link_color = '#74B9FF' if colors['bg'].lower() in {'#1e3a5f', '#2c3e50', '#1c1c1c', '#3a1a08', '#2d1b10', '#6b4226'} else '#0000EE'
-        else:
-            link_color = '#0000EE'
-        _insert_message(text_widget, message, link_color)
-        # 依訊息內容自動調整高度，最多 6 行
-        text_widget.configure(height=min(max(1, _estimate_display_lines(message)), 6))
-        text_widget.bind("<Key>", lambda e: "break")
-        text_widget.configure(insertwidth=0)
-
-        btn_kwargs: dict = {'text': ok_text, 'width': 10, 'command': popup.destroy}
-        if use_theme and colors:
-            btn_kwargs.update({'bg': colors['bg'], 'fg': colors['fg'],
-                               'activebackground': colors['fg'], 'activeforeground': colors['bg']})
-        close_button = tk.Button(frame, **btn_kwargs)
-        close_button.pack(pady=(10, 0))
+        btn.pack(side=tk.RIGHT)
+        popup.bind('<Return>', lambda e: popup.destroy())
 
         popup.update_idletasks()
-        width = popup.winfo_width()
-        height = popup.winfo_height()
-        screen_w = popup.winfo_screenwidth()
-        screen_h = popup.winfo_screenheight()
-        x = (screen_w - width) // 2
-        y = (screen_h - height) // 2
-        popup.geometry(f"+{max(0, x)}+{max(0, y)}")
+        w, h = popup.winfo_width(), popup.winfo_height()
+        sw, sh = popup.winfo_screenwidth(), popup.winfo_screenheight()
+        popup.geometry(f"+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}")
         popup.lift()
         return popup
     except tk.TclError as e:

@@ -46,6 +46,11 @@ class HourlyWebWindow(tk.Toplevel):
         """套用主題配色到視窗。"""
         self.config(bg=self.theme['bg'])
 
+    def _show_error(self, msg: str, title: str = "錯誤") -> None:
+        """以主題樣式顯示錯誤視窗。"""
+        from ui.popup_utils import show_reminder_popup_window
+        show_reminder_popup_window(self, msg, self.theme, title=title, ok_text="確定")
+
     def _setup_style(self) -> None:
         """設置 ttk 樣式以符合主題。"""
         style = ttk.Style()
@@ -166,14 +171,13 @@ class HourlyWebWindow(tk.Toplevel):
             end_hour = int(end_str.split(':')[0])
 
             if start_hour > end_hour:
-                messagebox.showerror("設定錯誤", "結束時間不能早於開始時間。", parent=self)
+                self._show_error("結束時間不能早於開始時間。", title="設定錯誤")
                 return
 
             if url and not is_safe_url(url):
-                messagebox.showerror(
-                    "設定錯誤",
+                self._show_error(
                     "請使用以 http:// 或 https:// 開頭的有效網址。",
-                    parent=self,
+                    title="設定錯誤",
                 )
                 return
 
@@ -181,23 +185,19 @@ class HourlyWebWindow(tk.Toplevel):
             self.destroy()
 
         except Exception as e:
-            messagebox.showerror("錯誤", f"發生錯誤：{e}", parent=self)
+            self._show_error(f"發生錯誤：{e}")
 
     def _test_open_url(self) -> None:
         """立即測試開啟網頁。"""
         url = self.url_entry.get().strip()
         if not url:
-            messagebox.showerror("錯誤", "請先輸入網頁網址。", parent=self)
+            self._show_error("請先輸入網頁網址。")
             return
         if not is_safe_url(url):
-            messagebox.showerror(
-                "錯誤",
-                "請使用以 http:// 或 https:// 開頭的有效網址。",
-                parent=self,
-            )
+            self._show_error("請使用以 http:// 或 https:// 開頭的有效網址。")
             return
         try:
             webbrowser.open(url)
         except Exception as e:
-            messagebox.showerror("錯誤", f"無法開啟網頁：{e}", parent=self)
+            self._show_error(f"無法開啟網頁：{e}")
 

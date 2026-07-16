@@ -45,6 +45,11 @@ class VacationScheduleWindow(tk.Toplevel):
     def _apply_theme(self) -> None:
         self.config(bg=self.theme['bg'])
 
+    def _show_error(self, msg: str, title: str = "錯誤") -> None:
+        """以主題樣式顯示錯誤視窗。"""
+        from ui.popup_utils import show_reminder_popup_window
+        show_reminder_popup_window(self, msg, self.theme, title=title, ok_text="確定")
+
     def _setup_style(self) -> None:
         """使用自訂樣式（Vacation.*）避免污染全域 ttk 樣式。"""
         style = ttk.Style()
@@ -187,16 +192,16 @@ class VacationScheduleWindow(tk.Toplevel):
                 label="結束日期",
             )
         except ValueError as e:
-            messagebox.showerror("錯誤", str(e), parent=self)
+            self._show_error(str(e))
             return
 
         if end < start:
-            messagebox.showerror("錯誤", "結束日期不可早於開始日期。", parent=self)
+            self._show_error("結束日期不可早於開始日期。")
             return
 
         today = date.today()
         if end < today:
-            messagebox.showerror("錯誤", "結束日期不可早於今天。", parent=self)
+            self._show_error("結束日期不可早於今天。")
             return
 
         note = self.note_entry.get().strip()
@@ -204,10 +209,10 @@ class VacationScheduleWindow(tk.Toplevel):
         try:
             self.callback(start.isoformat(), end.isoformat(), note)
         except ValueError as e:
-            messagebox.showerror("錯誤", str(e), parent=self)
+            self._show_error(str(e))
             return
         except Exception as e:
-            messagebox.showerror("錯誤", f"發生錯誤：{e}", parent=self)
+            self._show_error(f"發生錯誤：{e}")
             return
 
         self.destroy()

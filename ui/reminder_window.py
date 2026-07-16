@@ -48,6 +48,11 @@ class ReminderWindow(tk.Toplevel):
         """套用主題配色到視窗。"""
         self.config(bg=self.theme['bg'])
 
+    def _show_error(self, msg: str, title: str = "錯誤") -> None:
+        """以主題樣式顯示錯誤視窗。"""
+        from ui.popup_utils import show_reminder_popup_window
+        show_reminder_popup_window(self, msg, self.theme, title=title, ok_text="確定")
+
     def _setup_style(self) -> None:
         """設置 ttk 樣式以符合主題，使用自定義樣式名稱以避免污染全域樣式。"""
         style = ttk.Style()
@@ -196,7 +201,7 @@ class ReminderWindow(tk.Toplevel):
             message = self.msg_entry.get("1.0", "end-1c").strip() # 去除多餘的換行和空白
 
             if not title and not message:
-                messagebox.showerror("錯誤", "請至少輸入提醒標題或訊息。", parent=self)
+                self._show_error("請至少輸入提醒標題或訊息。")
                 self.msg_entry.focus_set()
                 return
 
@@ -221,16 +226,16 @@ class ReminderWindow(tk.Toplevel):
                         is_editing_without_time_change = True
 
                 if not is_editing_without_time_change and reminder_datetime <= datetime.now():
-                    messagebox.showerror("錯誤", "提醒時間必須是未來的時間。", parent=self)
+                    self._show_error("提醒時間必須是未來的時間。")
                     return
                 self.callback(reminder_datetime, message, [], self.reminder_to_edit, title)
 
             self.destroy()
 
         except ValueError as e:
-            messagebox.showerror("錯誤", f"請輸入有效的日期和時間：{e}", parent=self)
+            self._show_error(f"請輸入有效的日期和時間：{e}")
         except Exception as e:
-            messagebox.showerror("錯誤", f"發生錯誤：{e}", parent=self)
+            self._show_error(f"發生錯誤：{e}")
 
     def _load_reminder_data(self) -> None:
         """如果處於編輯模式，則載入現有提醒的資料。"""
