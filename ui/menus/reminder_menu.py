@@ -26,10 +26,10 @@ class ReminderMenu(Menu):
 
         self.add_separator()
 
-        # 重新載入設定以確保獲取最新狀態
-        self.ui.config = self.ui.logic.get_config()
+        # 重新載入設定以確保獲取最新的提醒清單
+        _fresh = self.ui.logic.get_config()
         now = datetime.now()
-        reminders = self.ui.config.get('reminders', [])
+        reminders = _fresh.get('reminders', [])
 
         # 過濾掉過期的單次提醒
         active_reminders = []
