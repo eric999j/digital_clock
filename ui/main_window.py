@@ -179,7 +179,8 @@ class DigitalClock(Observer):
 
         # 訊息為空時改用標題
         display_text = reminder.get('message') or reminder.get('title', '') or '提醒時間到了'
-        popup = show_reminder_popup_window(self.root, display_text)
+        theme = self._get_current_theme()
+        popup = show_reminder_popup_window(self.root, display_text, theme)
         if popup is not None:
             self._reminder_popups.append(popup)
             popup.bind('<Destroy>', lambda event, window=popup: self._forget_reminder_popup(window), add='+')
@@ -217,24 +218,32 @@ class DigitalClock(Observer):
         except tk.TclError:
             logger.debug("Clock window was already destroyed before screenshot restore")
 
-    def _show_info_after_idle(self, title: str, message: str) -> None:
-        """延後顯示訊息框，避免在 Tk callback 中重入 modal 視窗。"""
-        self.root.after_idle(lambda: messagebox.showinfo(title, message, parent=self.root))
+    def _get_current_theme(self) -> dict[str, str] | None:
+        """取得目前套用的主題配色字典。"""
+        return self.config['themes'].get(self.config['appearance']['theme'])
+
+    def _show_themed_info(self, message: str) -> None:
+        """以當前主題樣式顯示通知視窗（非阻塞），取代系統 messagebox。"""
+        from ui.popup_utils import show_reminder_popup_window
+        theme = self._get_current_theme()
+        self.root.after_idle(lambda: show_reminder_popup_window(
+            self.root, message, theme, title="成功", ok_text="確定"
+        ))
 
     def _on_reminder_added(self, *args) -> None:
-        self._show_info_after_idle("成功", "提醒已設定成功！")
+        self._show_themed_info("提醒已設定成功！")
         self._update_reminder_menu()
 
     def _on_reminder_updated(self, *args) -> None:
-        self._show_info_after_idle("成功", "提醒已更新！")
+        self._show_themed_info("提醒已更新！")
         self._update_reminder_menu()
 
     def _on_reminder_deleted(self, *args) -> None:
-        self._show_info_after_idle("成功", "提醒已刪除。")
+        self._show_themed_info("提醒已刪除。")
         self._update_reminder_menu()
 
     def _on_hourly_web_updated(self, *args) -> None:
-        self._show_info_after_idle("成功", "整點網頁提醒設定已更新！")
+        self._show_themed_info("整點網頁提醒設定已更新！")
 
     def _on_hourly_web_pause_toggled(self, is_paused: bool, *args) -> None:
         label = "啟動" if is_paused else "暫停"
@@ -255,11 +264,11 @@ class DigitalClock(Observer):
         self._update_vacation_menu()
 
     def _on_vacation_schedule_added(self, *args) -> None:
-        self._show_info_after_idle("成功", "休假排程已新增！")
+        self._show_themed_info("休假排程已新增！")
         self._update_vacation_menu()
 
     def _on_vacation_schedule_deleted(self, *args) -> None:
-        self._show_info_after_idle("成功", "休假排程已刪除。")
+        self._show_themed_info("休假排程已刪除。")
         self._update_vacation_menu()
 
     def _on_vacation_schedule_updated(self, *args) -> None:
@@ -272,9 +281,8 @@ class DigitalClock(Observer):
 
         def open_window() -> None:
             try:
-                config = self.logic.get_config()
-                theme = config['themes'].get(config['appearance']['theme'])
-                geometry = config['ui_behavior']['reminder_window_geometry']
+                theme = self._get_current_theme()
+                geometry = self.config['ui_behavior']['reminder_window_geometry']
                 ReminderWindow(self.root, self.logic.add_reminder, theme, reminder_to_edit, geometry=geometry)
             except Exception as e:
                 logger.error("Error opening reminder window: %s", e)
@@ -287,10 +295,9 @@ class DigitalClock(Observer):
 
         def open_window() -> None:
             try:
-                config = self.logic.get_config()
-                theme = config['themes'].get(config['appearance']['theme'])
-                current_config = config.get('hourly_web_reminder', {})
-                geometry = config['ui_behavior']['hourly_web_window_geometry']
+                theme = self._get_current_theme()
+                current_config = self.config.get('hourly_web_reminder', {})
+                geometry = self.config['ui_behavior']['hourly_web_window_geometry']
                 HourlyWebWindow(self.root, self.logic.update_hourly_web_reminder, theme, current_config, geometry=geometry)
             except Exception as e:
                 logger.error("Error opening hourly web window: %s", e)
@@ -303,8 +310,7 @@ class DigitalClock(Observer):
 
         def open_window() -> None:
             try:
-                config = self.logic.get_config()
-                theme = config['themes'].get(config['appearance']['theme'])
+                theme = self._get_current_theme()
                 VacationScheduleWindow(self.root, self.logic.add_vacation_schedule, theme)
             except Exception as e:
                 logger.error("Error opening vacation schedule window: %s", e)

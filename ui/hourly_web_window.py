@@ -59,76 +59,77 @@ class HourlyWebWindow(tk.Toplevel):
         except (ValueError, IndexError):
             is_dark_theme = False
 
-        style.configure('TFrame', background=bg)
-        style.configure('TLabelFrame', background=bg, foreground=fg)
-        style.configure('TLabelFrame.Label', background=bg, foreground=fg)
-        style.configure('TLabel', background=bg, foreground=fg)
-        style.configure('TCheckbutton', background=bg, foreground=fg)
-        style.configure('TEntry', fieldbackground='white', foreground='black')
+        style.configure('HourlyWeb.TFrame', background=bg)
+        style.configure('HourlyWeb.TLabelframe', background=bg, foreground=fg)
+        style.configure('HourlyWeb.TLabelframe.Label', background=bg, foreground=fg)
+        style.configure('HourlyWeb.TLabel', background=bg, foreground=fg)
+        style.configure('HourlyWeb.TCheckbutton', background=bg, foreground=fg)
+        style.configure('HourlyWeb.TEntry', fieldbackground='white', foreground='black')
 
         if is_dark_theme:
-            style.configure('TButton', background=bg, foreground='#000000', borderwidth=1)
+            style.configure('HourlyWeb.TButton', background=bg, foreground='#000000', borderwidth=1)
             hover_bg = '#666666'
             hover_fg = '#000000'
         else:
-            style.configure('TButton', background=bg, foreground=fg, borderwidth=1)
+            style.configure('HourlyWeb.TButton', background=bg, foreground=fg, borderwidth=1)
             hover_bg = '#CCCCCC'
             hover_fg = '#000000'
 
-        style.map('TButton',
+        style.map('HourlyWeb.TButton',
                   relief=[('pressed', 'sunken'), ('!pressed', 'raised')],
                   background=[('active', hover_bg), ('pressed', hover_bg)],
                   foreground=[('active', hover_fg), ('pressed', hover_fg)])
 
     def _create_widgets(self) -> None:
         """建立視窗中的所有元件。"""
-        main_frame = ttk.Frame(self, padding="15")
+        main_frame = ttk.Frame(self, padding="15", style='HourlyWeb.TFrame')
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # 說明 Label
         info_label = ttk.Label(
             main_frame,
             text="設定整點自動開啟的網頁。\n此功能僅在工作日 (週一至週五) 的指定時段內啟用。",
-            justify=tk.LEFT
+            justify=tk.LEFT,
+            style='HourlyWeb.TLabel',
         )
         info_label.pack(fill=tk.X, pady=(0, 15))
 
         # 網址設定
-        url_frame = ttk.LabelFrame(main_frame, text="目標網頁", padding="10")
+        url_frame = ttk.LabelFrame(main_frame, text="目標網頁", padding="10", style='HourlyWeb.TLabelframe')
         url_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Label(url_frame, text="網址 (URL):").pack(anchor='w', pady=(0, 5))
-        self.url_entry = ttk.Entry(url_frame)
+        ttk.Label(url_frame, text="網址 (URL):", style='HourlyWeb.TLabel').pack(anchor='w', pady=(0, 5))
+        self.url_entry = ttk.Entry(url_frame, style='HourlyWeb.TEntry')
         self.url_entry.pack(fill=tk.X)
-        ttk.Label(url_frame, text="例: https://google.com", font=('TkDefaultFont', 8)).pack(anchor='w', pady=(2, 0))
+        ttk.Label(url_frame, text="例: https://google.com", font=('TkDefaultFont', 8), style='HourlyWeb.TLabel').pack(anchor='w', pady=(2, 0))
 
         # 時間範圍設定
-        time_frame = ttk.LabelFrame(main_frame, text="啟用時段 (整點)", padding="10")
+        time_frame = ttk.LabelFrame(main_frame, text="啟用時段 (整點)", padding="10", style='HourlyWeb.TLabelframe')
         time_frame.pack(fill=tk.X, pady=(0, 10))
 
-        container = ttk.Frame(time_frame)
+        container = ttk.Frame(time_frame, style='HourlyWeb.TFrame')
         container.pack(fill=tk.X)
 
         # 製作 00:00 - 23:00 的選單值
         hours_values = [f"{h:02d}:00" for h in range(24)]
 
-        ttk.Label(container, text="從").pack(side=tk.LEFT)
+        ttk.Label(container, text="從", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
         self.start_hour_combo = ttk.Combobox(container, values=hours_values, width=8, state="readonly")
         self.start_hour_combo.pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(container, text="到").pack(side=tk.LEFT)
+        ttk.Label(container, text="到", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
         self.end_hour_combo = ttk.Combobox(container, values=hours_values, width=8, state="readonly")
         self.end_hour_combo.pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(container, text="(包含)").pack(side=tk.LEFT)
+        ttk.Label(container, text="(包含)", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
 
         # 底部按鈕 - 使用 side=BOTTOM 讓它貼底，並與上方保持距離
-        btn_frame = ttk.Frame(main_frame)
+        btn_frame = ttk.Frame(main_frame, style='HourlyWeb.TFrame')
         btn_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
 
-        ttk.Button(btn_frame, text="立即測試", command=self._test_open_url).pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="儲存", command=self._on_submit).pack(side=tk.RIGHT)
-        ttk.Button(btn_frame, text="取消", command=self.destroy).pack(side=tk.RIGHT, padx=10)
+        ttk.Button(btn_frame, text="立即測試", command=self._test_open_url, style='HourlyWeb.TButton').pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="儲存", command=self._on_submit, style='HourlyWeb.TButton').pack(side=tk.RIGHT)
+        ttk.Button(btn_frame, text="取消", command=self.destroy, style='HourlyWeb.TButton').pack(side=tk.RIGHT, padx=10)
 
     def _load_config(self) -> None:
         """載入現有設定。"""

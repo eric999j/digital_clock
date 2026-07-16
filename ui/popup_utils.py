@@ -59,6 +59,8 @@ def show_reminder_popup_window(
     parent: tk.Misc,
     message: str,
     theme: dict[str, str] | None = None,
+    title: str = "提醒",
+    ok_text: str = "關閉",
 ) -> tk.Toplevel | None:
     """在主 UI 執行緒建立非阻塞提醒視窗。
 
@@ -66,6 +68,8 @@ def show_reminder_popup_window(
         parent: 主視窗。
         message: 提醒內容。
         theme: 可選的主題顏色。
+        title: 視窗標題。
+        ok_text: 確認按鈕文字。
 
     Returns:
         建立成功的 Toplevel；建立失敗時回傳 None。
@@ -74,7 +78,7 @@ def show_reminder_popup_window(
     colors = theme if use_theme else None
     try:
         popup = tk.Toplevel(parent)
-        popup.title("提醒")
+        popup.title(title)
         popup.attributes("-topmost", True)
         popup.transient(parent)
         popup.resizable(False, False)
@@ -114,7 +118,7 @@ def show_reminder_popup_window(
         text_widget.bind("<Key>", lambda e: "break")
         text_widget.configure(insertwidth=0)
 
-        btn_kwargs: dict = {'text': '關閉', 'width': 10, 'command': popup.destroy}
+        btn_kwargs: dict = {'text': ok_text, 'width': 10, 'command': popup.destroy}
         if use_theme and colors:
             btn_kwargs.update({'bg': colors['bg'], 'fg': colors['fg'],
                                'activebackground': colors['fg'], 'activeforeground': colors['bg']})
