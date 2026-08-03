@@ -503,13 +503,17 @@ class DigitalClock(Observer):
         else:
             time_str = datetime.strptime(reminder['datetime'], '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M')
 
-        msg = f"您確定要刪除以下提醒嗎？\n\n時間: {time_str}\n訊息: {reminder['message']}"
+        display_msg = reminder.get('title', '').strip() or reminder.get('message', '')
+        msg = f"您確定要刪除以下提醒嗎？\n\n時間: {time_str}\n訊息: {display_msg}"
 
-        def confirm_delete() -> None:
-            if messagebox.askyesno("確認刪除", msg, parent=self.root):
-                self.logic.delete_reminder(reminder)
-
-        self.root.after_idle(confirm_delete)
+        from ui.popup_utils import show_confirm_popup_window
+        theme = self._get_current_theme()
+        self.root.after_idle(lambda: show_confirm_popup_window(
+            self.root, msg,
+            yes_callback=lambda: self.logic.delete_reminder(reminder),
+            theme=theme,
+            title="確認刪除",
+        ))
 
     def _confirm_delete_vacation_schedule(self, schedule: dict[str, Any]) -> None:
         """

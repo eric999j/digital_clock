@@ -6,6 +6,7 @@ import re
 import tkinter as tk
 import tkinter.font as tkfont
 import webbrowser
+from collections.abc import Callable
 from tkinter import messagebox
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,108 @@ def show_reminder_popup_window(
         return popup
     except tk.TclError as e:
         logger.warning("Unable to create reminder popup: %s", e)
+        return None
+
+
+def show_confirm_popup_window(
+    parent: tk.Misc,
+    message: str,
+    yes_callback: Callable[[], None],
+    theme: dict[str, str] | None = None,
+    title: str = "確認",
+    yes_text: str = "是",
+    no_text: str = "否",
+) -> tk.Toplevel | None:
+    """以主題樣式顯示確認對話框（非阻塞），點擊確認後執行 yes_callback。"""
+    try:
+        sys_font = tkfont.nametofont("TkDefaultFont").actual()['family']
+    except Exception:
+        sys_font = "Microsoft JhengHei UI"
+
+    bg = theme['bg'] if theme else None
+    fg = theme['fg'] if theme else None
+    sep_color = "#cccccc"
+    if bg:
+        try:
+            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
+            brightness = (r * 299 + g * 587 + b * 114) / 1000
+            adj = 45
+            if brightness < 128:
+                sep_color = f"#{min(255,r+adj):02x}{min(255,g+adj):02x}{min(255,b+adj):02x}"
+            else:
+                sep_color = f"#{max(0,r-adj):02x}{max(0,g-adj):02x}{max(0,b-adj):02x}"
+        except Exception:
+            pass
+
+    try:
+        popup = tk.Toplevel(parent)
+        popup.title(title)
+        popup.attributes("-topmost", True)
+        popup.transient(parent)
+        popup.resizable(False, False)
+        popup.grab_set()
+        if bg:
+            popup.configure(bg=bg)
+
+        outer = tk.Frame(popup, padx=22, pady=18)
+        if bg:
+            outer.configure(bg=bg)
+        outer.pack(fill=tk.BOTH, expand=True)
+        actual_bg = outer.cget('bg')
+        actual_fg = fg or 'black'
+
+        header = tk.Frame(outer, bg=actual_bg)
+        header.pack(fill=tk.X)
+        tk.Label(header, text="?", font=(sys_font, 15), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
+        tk.Label(header, text=f"  {title}", font=(sys_font, 12, 'bold'), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
+
+        tk.Frame(outer, bg=sep_color, height=1).pack(fill=tk.X, pady=(10, 12))
+
+        if message:
+            text_widget = tk.Text(
+                outer, wrap=tk.WORD, width=36, height=1,
+                font=(sys_font, 11), borderwidth=0, highlightthickness=0,
+                cursor="arrow", bg=actual_bg, fg=actual_fg,
+            )
+            text_widget.pack(fill=tk.BOTH, expand=True)
+            text_widget.insert(tk.END, message)
+            text_widget.configure(height=min(max(1, _estimate_display_lines(message)), 8))
+            text_widget.bind("<Key>", lambda e: "break")
+            text_widget.configure(insertwidth=0)
+
+        btn_area = tk.Frame(outer, bg=actual_bg)
+        btn_area.pack(fill=tk.X, pady=(14, 0))
+
+        def on_yes() -> None:
+            popup.destroy()
+            yes_callback()
+
+        tk.Button(
+            btn_area, text=yes_text, width=8,
+            font=(sys_font, 10), relief='groove', cursor='hand2',
+            command=on_yes,
+            bg=actual_bg, fg=actual_fg,
+            activebackground=actual_fg, activeforeground=actual_bg,
+        ).pack(side=tk.RIGHT, padx=(4, 0))
+        tk.Button(
+            btn_area, text=no_text, width=8,
+            font=(sys_font, 10), relief='groove', cursor='hand2',
+            command=popup.destroy,
+            bg=actual_bg, fg=actual_fg,
+            activebackground=actual_fg, activeforeground=actual_bg,
+        ).pack(side=tk.RIGHT)
+
+        popup.bind('<Return>', lambda e: on_yes())
+        popup.bind('<Escape>', lambda e: popup.destroy())
+
+        popup.update_idletasks()
+        w, h = popup.winfo_width(), popup.winfo_height()
+        sw, sh = popup.winfo_screenwidth(), popup.winfo_screenheight()
+        popup.geometry(f"+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}")
+        popup.lift()
+        return popup
+    except tk.TclError as e:
+        logger.warning("Unable to create confirm popup: %s", e)
         return None
 
 
