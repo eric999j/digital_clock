@@ -243,22 +243,35 @@ def show_reminder_popup_window(
 
         # ── 訊息內容 ──
         if message:
+            display_lines = min(max(2, _estimate_display_lines(message)), 10)
+            text_frame = tk.Frame(outer, bg=actual_bg)
+            text_frame.pack(fill=tk.BOTH, expand=True)
+            scrollbar = tk.Scrollbar(text_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
             text_widget = tk.Text(
-                outer,
+                text_frame,
                 wrap=tk.WORD,
                 width=36,
-                height=1,
+                height=display_lines,
                 font=(sys_font, 11),
                 borderwidth=0,
                 highlightthickness=0,
                 cursor="arrow",
                 bg=actual_bg,
                 fg=actual_fg,
+                yscrollcommand=scrollbar.set,
             )
-            text_widget.pack(fill=tk.BOTH, expand=True)
+            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=text_widget.yview)
             _insert_message(text_widget, message, link_color, sys_font, actual_bg, actual_fg)
-            text_widget.configure(height=min(max(1, _estimate_display_lines(message)), 6))
             text_widget.bind("<Key>", lambda e: "break")
+            # 允許 Ctrl+C 複製、Ctrl+A 全選（比 <Key> 更具體，優先觸發）
+            text_widget.bind("<Control-c>", lambda e: text_widget.event_generate("<<Copy>>") or "break")
+            text_widget.bind("<Control-a>", lambda e: (
+                text_widget.tag_add(tk.SEL, "1.0", tk.END),
+                text_widget.mark_set(tk.INSERT, tk.END),
+                "break",
+            )[-1])
             text_widget.configure(insertwidth=0)
 
         # ── 按鈕列 ──
