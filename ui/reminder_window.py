@@ -169,12 +169,17 @@ class ReminderWindow(tk.Toplevel):
         title_frame.pack(fill=tk.X, pady=5)
         self.title_entry = ttk.Entry(title_frame, style='Reminder.TEntry')
         self.title_entry.pack(fill=tk.X, expand=True)
+        self.title_entry.bind('<KP_Subtract>', lambda e: e.widget.insert(tk.INSERT, '-') or 'break')
+        self.title_entry.bind('<KP_Decimal>', lambda e: e.widget.insert(tk.INSERT, '.') or 'break')
 
         # 提醒訊息
         msg_frame = ttk.LabelFrame(frame, text="提醒訊息", padding="5", style='Reminder.TLabelframe')
         msg_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         self.msg_entry = tk.Text(msg_frame, height=10, bg='white', fg='black', font='TkDefaultFont')
         self.msg_entry.pack(fill=tk.BOTH, expand=True)
+        # 修正 Windows 數字鍵盤部分按鍵無法輸入的問題
+        self.msg_entry.bind('<KP_Subtract>', lambda e: e.widget.insert(tk.INSERT, '-') or 'break')
+        self.msg_entry.bind('<KP_Decimal>', lambda e: e.widget.insert(tk.INSERT, '.') or 'break')
 
         # 按鈕
         btn_frame = ttk.Frame(frame, style='Reminder.TFrame')

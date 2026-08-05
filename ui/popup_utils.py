@@ -25,27 +25,132 @@ def _has_url(message: str) -> bool:
     return bool(_URL_PATTERN.search(message))
 
 
-def _insert_message(text_widget: tk.Text, message: str, link_color: str) -> None:
-    """將一般文字與 URL 插入文字元件。"""
-    parts = _URL_PATTERN.split(message)
-    for idx, part in enumerate(parts):
-        if _URL_PATTERN.fullmatch(part):
-            tag_name = f"link_{idx}"
-            text_widget.tag_configure(tag_name, foreground=link_color, underline=True)
-            text_widget.tag_bind(
-                tag_name,
-                "<Enter>",
-                lambda e, w=text_widget: w.configure(cursor="hand2"),
-            )
-            text_widget.tag_bind(
-                tag_name,
-                "<Leave>",
-                lambda e, w=text_widget: w.configure(cursor="arrow"),
-            )
-            text_widget.tag_bind(tag_name, "<Button-1>", lambda e, u=part: _open_url(u))
-            text_widget.insert(tk.END, part, tag_name)
-        else:
-            text_widget.insert(tk.END, part)
+# Markdown 行內語法模式（順序：*** > ** > __ > * > _ > ` > [](url) > URL）
+_INLINE_MD_PATTERN = re.compile(
+    r'(?P<bold_italic>\*\*\*[^*\n]+?\*\*\*)'
+    r'|(?P<bold>\*\*[^*\n]+?\*\*)'
+    r'|(?P<bold_u>__[^_\n]+?__)'
+    r'|(?P<italic>\*[^*\n]+?\*)'
+    r'|(?P<italic_u>_[^_\n]+?_)'
+    r'|(?P<code>`[^\n`]+?`)'
+    r'|(?P<link>\[(?P<link_text>[^\]]+)\]\((?P<link_url>[^)\n]+)\))'
+    r'|(?P<url>https?://[^\s<>"\' ]+)'
+)
+_HEADER_RE = re.compile(r'^(#{1,6})\s+(.*)')
+_HR_RE = re.compile(r'^[-*_]{3,}\s*$')
+_LIST_RE = re.compile(r'^(\s*)([-*+]|\d+\.)\s+(.*)')
+
+
+def _code_bg_color(bg: str) -> str:
+    """依主題亮暗計算 code 區塊背景色。"""
+    try:
+        r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
+        brightness = (r * 299 + g * 587 + b * 114) / 1000
+        adj = 35 if brightness < 128 else -35
+        return (f"#{max(0, min(255, r + adj)):02x}"
+                f"{max(0, min(255, g + adj)):02x}"
+                f"{max(0, min(255, b + adj)):02x}")
+    except Exception:
+        return '#f0f0f0'
+
+
+def _configure_md_tags(
+    text_widget: tk.Text,
+    sys_font: str,
+    actual_bg: str,
+    actual_fg: str,
+    link_color: str,
+) -> None:
+    """設置 Markdown 渲染所需的所有 tag。"""
+    text_widget.tag_configure('bold', font=(sys_font, 11, 'bold'))
+    text_widget.tag_configure('italic', font=(sys_font, 11, 'italic'))
+    text_widget.tag_configure('bold_italic', font=(sys_font, 11, 'bold italic'))
+    text_widget.tag_configure('h1', font=(sys_font, 16, 'bold'))
+    text_widget.tag_configure('h2', font=(sys_font, 14, 'bold'))
+    text_widget.tag_configure('h3', font=(sys_font, 13, 'bold'))
+    text_widget.tag_configure('h4', font=(sys_font, 12, 'bold'))
+    text_widget.tag_configure('h5', font=(sys_font, 11, 'bold'))
+    text_widget.tag_configure('h6', font=(sys_font, 11, 'bold italic'))
+    text_widget.tag_configure(
+        'code',
+        font=('Courier New', 10),
+        background=_code_bg_color(actual_bg),
+        foreground=actual_fg,
+    )
+    text_widget.tag_configure('hr', foreground='gray')
+
+
+def _insert_inline_md(
+    text_widget: tk.Text,
+    text: str,
+    link_color: str,
+) -> None:
+    """將含有 Markdown 行內語法的文字插入 Text 元件。"""
+    last = 0
+    for m in _INLINE_MD_PATTERN.finditer(text):
+        if m.start() > last:
+            text_widget.insert(tk.END, text[last:m.start()])
+        gd = m.lastgroup
+        raw = m.group()
+        if gd == 'bold_italic':
+            text_widget.insert(tk.END, raw[3:-3], 'bold_italic')
+        elif gd in ('bold', 'bold_u'):
+            text_widget.insert(tk.END, raw[2:-2], 'bold')
+        elif gd in ('italic', 'italic_u'):
+            text_widget.insert(tk.END, raw[1:-1], 'italic')
+        elif gd == 'code':
+            text_widget.insert(tk.END, raw[1:-1], 'code')
+        elif gd == 'link':
+            link_text = m.group('link_text')
+            link_url = m.group('link_url')
+            tag = f"md_link_{m.start()}"
+            text_widget.tag_configure(tag, foreground=link_color, underline=True)
+            text_widget.tag_bind(tag, "<Enter>", lambda e, w=text_widget: w.configure(cursor="hand2"))
+            text_widget.tag_bind(tag, "<Leave>", lambda e, w=text_widget: w.configure(cursor="arrow"))
+            text_widget.tag_bind(tag, "<Button-1>", lambda e, u=link_url: _open_url(u))
+            text_widget.insert(tk.END, link_text, tag)
+        elif gd == 'url':
+            tag = f"url_{m.start()}"
+            text_widget.tag_configure(tag, foreground=link_color, underline=True)
+            text_widget.tag_bind(tag, "<Enter>", lambda e, w=text_widget: w.configure(cursor="hand2"))
+            text_widget.tag_bind(tag, "<Leave>", lambda e, w=text_widget: w.configure(cursor="arrow"))
+            text_widget.tag_bind(tag, "<Button-1>", lambda e, u=raw: _open_url(u))
+            text_widget.insert(tk.END, raw, tag)
+        last = m.end()
+    if last < len(text):
+        text_widget.insert(tk.END, text[last:])
+
+
+def _insert_message(
+    text_widget: tk.Text,
+    message: str,
+    link_color: str,
+    sys_font: str = "Microsoft JhengHei UI",
+    actual_bg: str = "#ffffff",
+    actual_fg: str = "#000000",
+) -> None:
+    """將訊息以 Markdown 格式插入 Text 元件，支援標題、清單、行內格式與超連結。"""
+    _configure_md_tags(text_widget, sys_font, actual_bg, actual_fg, link_color)
+    lines = message.split('\n')
+    for i, line in enumerate(lines):
+        if i > 0:
+            text_widget.insert(tk.END, '\n')
+        header_m = _HEADER_RE.match(line)
+        if header_m:
+            level = min(len(header_m.group(1)), 6)
+            text_widget.insert(tk.END, header_m.group(2), f'h{level}')
+            continue
+        if _HR_RE.match(line):
+            text_widget.insert(tk.END, '─' * 32, 'hr')
+            continue
+        list_m = _LIST_RE.match(line)
+        if list_m:
+            indent, marker, content = list_m.group(1), list_m.group(2), list_m.group(3)
+            bullet = '•' if not marker[0].isdigit() else f'{marker}'
+            text_widget.insert(tk.END, f'{indent}{bullet} ')
+            _insert_inline_md(text_widget, content, link_color)
+            continue
+        _insert_inline_md(text_widget, line, link_color)
 
 
 def _estimate_display_lines(message: str, chars_per_line: int = 38) -> int:
@@ -151,7 +256,7 @@ def show_reminder_popup_window(
                 fg=actual_fg,
             )
             text_widget.pack(fill=tk.BOTH, expand=True)
-            _insert_message(text_widget, message, link_color)
+            _insert_message(text_widget, message, link_color, sys_font, actual_bg, actual_fg)
             text_widget.configure(height=min(max(1, _estimate_display_lines(message)), 6))
             text_widget.bind("<Key>", lambda e: "break")
             text_widget.configure(insertwidth=0)
