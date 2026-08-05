@@ -205,7 +205,7 @@ def show_reminder_popup_window(
             pass
 
     # 標題圖示與超連結顏色
-    icon_char = {"提醒": "🔔", "成功": "✓", "錯誤": "✕", "設定錯誤": "⚠", "警告": "⚠"}.get(title, "ℹ")
+    icon_char = {"提醒": "🔔", "成功": "✓", "錯誤": "✕", "設定錯誤": "⚠", "警告": "⚠"}.get(title, "🔔")
     dark_bgs = {'#1e3a5f', '#2c3e50', '#1c1c1c', '#3a1a08', '#2d1b10', '#6b4226'}
     link_color = '#74B9FF' if (bg and bg.lower() in dark_bgs) else '#0066CC'
 
