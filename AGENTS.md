@@ -59,9 +59,19 @@ Python 3.13 + `pynput`，無其他外部依賴。
 - Strategy 有狀態（如 `last_triggered_hour`），測試間需確保隔離
 - 設定檔路徑 `~/.digital_clock/config.json`，測試時 mock `Path.home()`
 
+## 關鍵模組補充
+
+| 模組 | 說明 |
+|---|---|
+| `services/pause_manager.py` | 統一管理 reminder/hourly_web/vacation 暫停狀態，勿在 service 直接讀寫 paused 欄位 |
+| `ui/popup_utils.py` | 提供非阻塞提醒彈窗，**支援 Markdown 行內語法渲染**（粗體、斜體、code、連結、URL）。**禁止直接使用 `tkinter.messagebox`**——所有確認、錯誤、通知彈窗均須呼叫此模組函數，確保主題配色一致 |
+| `ui/menus/` | `context_menu.py`、`reminder_menu.py`、`vacation_menu.py`，右鍵選單子元件 |
+
 ## 常見陷阱
 
 - **循環引用**：`ClockLogic` ↔ `DigitalClock` 互相引用，新模組引用 UI 時須使用 `TYPE_CHECKING` guard
 - **tkinter 線程安全**：背景線程不可直接操作 UI，用 `root.after()` 排程
 - **Windows 專用程式碼**：`ctypes.windll` 在非 Windows 會失敗，需 platform check
-- **設定檔寫入**：使用 `schedule_save()` 延遲儲存，避免頻繁 IO
+- **schedule_save() 時序**：`schedule_save()` 僅延遲磁碟寫入，記憶體狀態立即生效。開子視窗或更新選單時必須從記憶體讀取，**絕不可**再呼叫 `get_config()` 從磁碟快取——否則會拿到未儲存的舊值（主題、提醒清單等）
+- **ttk 樣式命名**：`ttk.LabelFrame` 對應樣式 key 為 `TLabelframe`（小寫 `f`），誤用 `TLabelFrame` 會導致 layout 找不到
+- **暫停狀態**：所有暫停/休假判斷必須透過 `PauseManager`，不可直接讀取 config 欄位
