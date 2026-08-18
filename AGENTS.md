@@ -51,6 +51,15 @@ Python 3.13 + `pynput`，無其他外部依賴。
 | Strategy | `strategies/base.py` | 新策略必須繼承 `BaseStrategy` 並實作 `check()` |
 | DI Container | `core/container.py` | name-based `register`/`get` |
 
+### Strategy 回傳型別規範
+
+| Strategy | `check()` 回傳 | 說明 |
+|---|---|---|
+| `ReminderStrategy` | `tuple[list[dict], str]` | `(triggered, updated_minute_key)`；去重狀態由 `ReminderService._last_weekly_minute_key` 持有 |
+| `HourlyWebReminderStrategy` | `str \| None` | 要開啟的 URL，或 None；支援 `url_rules` 時段路由 |
+| `PomodoroStrategy` | `str` | 下一個階段名稱 |
+| `VacationScheduleStrategy` | `dict` | 含 `active/expired/future/invalid` 分類 |
+
 ## 測試
 
 - 框架：**unittest**（標準庫）
@@ -58,14 +67,33 @@ Python 3.13 + `pynput`，無其他外部依賴。
 - ConfigManager 測試需先 `ConfigManager._instance = None` 重設 Singleton
 - Strategy 有狀態（如 `last_triggered_hour`），測試間需確保隔離
 - 設定檔路徑 `~/.digital_clock/config.json`，測試時 mock `Path.home()`
+- Strategy mock 回傳值須符合型別：`ReminderStrategy` → `([], "")` tuple；`HourlyWebReminderStrategy` → `None`（非 `False`）
 
 ## 關鍵模組補充
 
 | 模組 | 說明 |
 |---|---|
-| `services/pause_manager.py` | 統一管理 reminder/hourly_web/vacation 暫停狀態，勿在 service 直接讀寫 paused 欄位 |
+| `services/pause_manager.py` | 統一管理 reminder/hourly_web/vacation 暫停狀態，勿在 service 直接讀寫 paused 欄位。**`toggle_vacation()` 不再接收 pomodoro_stop 參數**——須先呼叫 `set_pomodoro_stop(callback)` 注入 |
+| `services/reminder_service.py` | 持有 `_last_weekly_minute_key`（週期提醒去重狀態）；呼叫 Strategy 時傳入並接收 tuple |
+| `services/pomodoro_service.py` | `__init__` 接收 `Callable[[], dict]` getter，每次 `start_focus/break` 才讀取最新設定 |
 | `ui/popup_utils.py` | 提供非阻塞提醒彈窗，**支援 Markdown 行內語法渲染**（粗體、斜體、code、連結、URL）。**禁止直接使用 `tkinter.messagebox`**——所有確認、錯誤、通知彈窗均須呼叫此模組函數，確保主題配色一致 |
 | `ui/menus/` | `context_menu.py`、`reminder_menu.py`、`vacation_menu.py`，右鍵選單子元件 |
+
+### 整點網頁 Config 結構
+
+```json
+"hourly_web_reminder": {
+  "url_rules": [{"url": "https://...", "start_hour": 9, "end_hour": 12}],
+  "paused": false,
+  "work_days_only": true,
+  "url": "",        // 舊版相容欄位，Strategy 在 url_rules 為空時使用
+  "start_hour": 8,
+  "end_hour": 17
+}
+```
+
+- 新增規則：加入 `url_rules` 清單；`update_config(url_rules)` 同時更新舊版欄位保持相容。
+- Strategy 優先用 `url_rules`，逐條比對 `start_hour ≤ now.hour ≤ end_hour`，回傳第一個命中的 URL。
 
 ## 常見陷阱
 
@@ -75,3 +103,4 @@ Python 3.13 + `pynput`，無其他外部依賴。
 - **schedule_save() 時序**：`schedule_save()` 僅延遲磁碟寫入，記憶體狀態立即生效。開子視窗或更新選單時必須從記憶體讀取，**絕不可**再呼叫 `get_config()` 從磁碟快取——否則會拿到未儲存的舊值（主題、提醒清單等）
 - **ttk 樣式命名**：`ttk.LabelFrame` 對應樣式 key 為 `TLabelframe`（小寫 `f`），誤用 `TLabelFrame` 會導致 layout 找不到
 - **暫停狀態**：所有暫停/休假判斷必須透過 `PauseManager`，不可直接讀取 config 欄位
+- **tkinter pack 順序**：視窗底部元件（按鈕列）必須**先** `pack(side=BOTTOM)`，再 pack 可展開的中間區塊（`expand=True`），否則按鈕會被推出可視範圍
