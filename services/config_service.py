@@ -86,7 +86,7 @@ class ConfigManager:
                     "relax_after_ms": 1500
                 },
                 "reminder_window_geometry": "400x530",
-                "hourly_web_window_geometry": "500x320"
+                "hourly_web_window_geometry": "560x430"
             },
             "system": {
                 "save_delay_ms": 1000,
@@ -119,7 +119,8 @@ class ConfigManager:
                 "url": "",
                 "start_hour": 8,
                 "end_hour": 17,
-                "work_days_only": True  # 是否僅在上班日（週一至週五）觸發
+                "work_days_only": True,  # 是否僅在上班日（週一至週五）觸發
+                "url_rules": []  # [{url, start_hour, end_hour}] 時段路由設定
             },
             "pomodoro": {
                 "focus_minutes": 25,

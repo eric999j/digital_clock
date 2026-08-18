@@ -2,7 +2,7 @@
 import tkinter as tk
 import webbrowser
 from collections.abc import Callable
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from typing import Any
 
 from core.url_validator import is_safe_url
@@ -12,17 +12,7 @@ class HourlyWebWindow(tk.Toplevel):
     """用於設定整點網頁提醒的彈出視窗。"""
 
     def __init__(self, parent: tk.Tk, callback: Callable, theme: dict[str, str] | None = None,
-                 current_config: dict[str, Any] | None = None, geometry: str = "700x600") -> None:
-        """
-        初始化整點網頁提醒設定視窗。
-
-        Args:
-            parent: 父視窗
-            callback: 更新設定的回調函數 (enabled, url, hours, weekdays)
-            theme: 主題配色
-            current_config: 當前的整點網頁提醒設定
-            geometry: 視窗幾何設定
-        """
+                 current_config: dict[str, Any] | None = None, geometry: str = "560x430") -> None:
         super().__init__(parent)
         self.callback = callback
         self.theme = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
@@ -39,7 +29,7 @@ class HourlyWebWindow(tk.Toplevel):
             self._create_widgets()
             self._load_config()
         except Exception as e:
-            messagebox.showerror("錯誤", f"無法建立設定視窗：{e}", parent=parent)
+            self._show_error(f"無法建立設定視窗：{e}")
             self.destroy()
 
     def _apply_theme(self) -> None:
@@ -86,110 +76,117 @@ class HourlyWebWindow(tk.Toplevel):
                   foreground=[('active', hover_fg), ('pressed', hover_fg)])
 
     def _create_widgets(self) -> None:
-        """建立視窗中的所有元件。"""
-        main_frame = ttk.Frame(self, padding="15", style='HourlyWeb.TFrame')
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        outer = ttk.Frame(self, padding="12", style='HourlyWeb.TFrame')
+        outer.pack(fill=tk.BOTH, expand=True)
 
-        # 說明 Label
-        info_label = ttk.Label(
-            main_frame,
-            text="設定整點自動開啟的網頁。\n此功能僅在工作日 (週一至週五) 的指定時段內啟用。",
-            justify=tk.LEFT,
-            style='HourlyWeb.TLabel',
-        )
-        info_label.pack(fill=tk.X, pady=(0, 15))
+        # 底部按鈕先 pack，確保永遠可見
+        btn_frame = ttk.Frame(outer, style='HourlyWeb.TFrame')
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(8, 0))
+        ttk.Button(btn_frame, text="取消", command=self.destroy,
+                   style='HourlyWeb.TButton').pack(side=tk.RIGHT, padx=(4, 0))
+        ttk.Button(btn_frame, text="儲存", command=self._on_submit,
+                   style='HourlyWeb.TButton').pack(side=tk.RIGHT)
 
-        # 網址設定
-        url_frame = ttk.LabelFrame(main_frame, text="目標網頁", padding="10", style='HourlyWeb.TLabelframe')
-        url_frame.pack(fill=tk.X, pady=(0, 10))
+        # 新增規則表單（BOTTOM 之上，固定高度）
+        add_frame = ttk.LabelFrame(outer, text="新增規則", padding="8", style='HourlyWeb.TLabelframe')
+        add_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(0, 6))
 
-        ttk.Label(url_frame, text="網址 (URL):", style='HourlyWeb.TLabel').pack(anchor='w', pady=(0, 5))
-        self.url_entry = ttk.Entry(url_frame, style='HourlyWeb.TEntry')
-        self.url_entry.pack(fill=tk.X)
-        ttk.Label(url_frame, text="例: https://google.com", font=('TkDefaultFont', 8), style='HourlyWeb.TLabel').pack(anchor='w', pady=(2, 0))
+        url_row = ttk.Frame(add_frame, style='HourlyWeb.TFrame')
+        url_row.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(url_row, text="URL:", width=5, style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        self._add_url_entry = ttk.Entry(url_row, style='HourlyWeb.TEntry')
+        self._add_url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(url_row, text="測試", command=self._test_url,
+                   style='HourlyWeb.TButton').pack(side=tk.LEFT, padx=(4, 0))
 
-        # 時間範圍設定
-        time_frame = ttk.LabelFrame(main_frame, text="啟用時段 (整點)", padding="10", style='HourlyWeb.TLabelframe')
-        time_frame.pack(fill=tk.X, pady=(0, 10))
-
-        container = ttk.Frame(time_frame, style='HourlyWeb.TFrame')
-        container.pack(fill=tk.X)
-
-        # 製作 00:00 - 23:00 的選單值
+        hour_row = ttk.Frame(add_frame, style='HourlyWeb.TFrame')
+        hour_row.pack(fill=tk.X)
         hours_values = [f"{h:02d}:00" for h in range(24)]
+        ttk.Label(hour_row, text="時段:", width=5, style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        ttk.Label(hour_row, text="從", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        self._start_combo = ttk.Combobox(hour_row, values=hours_values, width=7, state="readonly")
+        self._start_combo.current(8)
+        self._start_combo.pack(side=tk.LEFT, padx=4)
+        ttk.Label(hour_row, text="到", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        self._end_combo = ttk.Combobox(hour_row, values=hours_values, width=7, state="readonly")
+        self._end_combo.current(17)
+        self._end_combo.pack(side=tk.LEFT, padx=4)
+        ttk.Label(hour_row, text="（含）", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        ttk.Button(hour_row, text="新增 ＋", command=self._add_rule,
+                   style='HourlyWeb.TButton').pack(side=tk.RIGHT)
 
-        ttk.Label(container, text="從", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
-        self.start_hour_combo = ttk.Combobox(container, values=hours_values, width=8, state="readonly")
-        self.start_hour_combo.pack(side=tk.LEFT, padx=5)
+        # 說明標籤
+        ttk.Label(
+            outer,
+            text="設定整點自動開啟的網頁（工作日指定時段）。支援多組規則，依序比對時段。",
+            wraplength=520, justify=tk.LEFT, style='HourlyWeb.TLabel',
+        ).pack(fill=tk.X, pady=(0, 6))
 
-        ttk.Label(container, text="到", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
-        self.end_hour_combo = ttk.Combobox(container, values=hours_values, width=8, state="readonly")
-        self.end_hour_combo.pack(side=tk.LEFT, padx=5)
+        # 規則清單（佔剩餘空間）
+        list_frame = ttk.LabelFrame(outer, text="URL 排程規則", padding="6", style='HourlyWeb.TLabelframe')
+        list_frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(container, text="(包含)", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
-
-        # 底部按鈕 - 使用 side=BOTTOM 讓它貼底，並與上方保持距離
-        btn_frame = ttk.Frame(main_frame, style='HourlyWeb.TFrame')
-        btn_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(10, 0))
-
-        ttk.Button(btn_frame, text="立即測試", command=self._test_open_url, style='HourlyWeb.TButton').pack(side=tk.LEFT)
-        ttk.Button(btn_frame, text="儲存", command=self._on_submit, style='HourlyWeb.TButton').pack(side=tk.RIGHT)
-        ttk.Button(btn_frame, text="取消", command=self.destroy, style='HourlyWeb.TButton').pack(side=tk.RIGHT, padx=10)
+        cols = ttk.Frame(list_frame, style='HourlyWeb.TFrame')
+        cols.pack(fill=tk.BOTH, expand=True)
+        self._rules_listbox = tk.Listbox(
+            cols, height=5, selectmode=tk.SINGLE,
+            bg='white', fg='black', font=('Consolas', 9), activestyle='dotbox',
+        )
+        self._rules_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb = ttk.Scrollbar(cols, orient=tk.VERTICAL, command=self._rules_listbox.yview)
+        sb.pack(side=tk.LEFT, fill=tk.Y)
+        self._rules_listbox.configure(yscrollcommand=sb.set)
+        ttk.Button(list_frame, text="刪除選取", command=self._remove_rule,
+                   style='HourlyWeb.TButton').pack(anchor='e', pady=(4, 0))
 
     def _load_config(self) -> None:
-        """載入現有設定。"""
-        self.url_entry.insert(0, self.current_config.get('url', ''))
+        url_rules: list[dict] = self.current_config.get('url_rules', [])
+        # 自動遷移舊版單一 URL 設定
+        if not url_rules:
+            url = self.current_config.get('url', '').strip()
+            if url:
+                url_rules = [{
+                    'url': url,
+                    'start_hour': self.current_config.get('start_hour', 8),
+                    'end_hour': self.current_config.get('end_hour', 17),
+                }]
+        self._refresh_listbox(url_rules)
 
-        start_hour = self.current_config.get('start_hour', 8)
-        end_hour = self.current_config.get('end_hour', 17)
+    def _refresh_listbox(self, rules: list[dict]) -> None:
+        self._rules: list[dict] = list(rules)
+        self._rules_listbox.delete(0, tk.END)
+        for r in self._rules:
+            s, e = r.get('start_hour', 0), r.get('end_hour', 23)
+            self._rules_listbox.insert(tk.END, f"{s:02d}:00–{e:02d}:00  {r.get('url', '')}")
 
-        # 兼容舊設定：如果只有 hours 列表，取最小和最大值
-        if 'hours' in self.current_config and 'start_hour' not in self.current_config:
-            hours = self.current_config['hours']
-            if hours:
-                start_hour = min(hours)
-                end_hour = max(hours)
+    def _add_rule(self) -> None:
+        url = self._add_url_entry.get().strip()
+        if not url:
+            self._show_error("請輸入 URL。")
+            return
+        if not is_safe_url(url):
+            self._show_error("請使用以 http:// 或 https:// 開頭的有效網址。")
+            return
+        start_hour = int(self._start_combo.get().split(':')[0])
+        end_hour = int(self._end_combo.get().split(':')[0])
+        if start_hour > end_hour:
+            self._show_error("結束時間不能早於開始時間。")
+            return
+        rules = list(getattr(self, '_rules', []))
+        rules.append({'url': url, 'start_hour': start_hour, 'end_hour': end_hour})
+        self._refresh_listbox(rules)
+        self._add_url_entry.delete(0, tk.END)
 
-        # 設定下拉選單
-        try:
-            self.start_hour_combo.current(start_hour)
-            self.end_hour_combo.current(end_hour)
-        except (tk.TclError, ValueError):
-            self.start_hour_combo.current(8)
-            self.end_hour_combo.current(17)
+    def _remove_rule(self) -> None:
+        sel = self._rules_listbox.curselection()
+        if not sel:
+            return
+        rules = list(getattr(self, '_rules', []))
+        del rules[sel[0]]
+        self._refresh_listbox(rules)
 
-    def _on_submit(self) -> None:
-        """處理儲存事件。"""
-        try:
-            url = self.url_entry.get().strip()
-
-            # 從 "08:00" 格式字串解析出整數 8
-            start_str = self.start_hour_combo.get()
-            end_str = self.end_hour_combo.get()
-
-            start_hour = int(start_str.split(':')[0])
-            end_hour = int(end_str.split(':')[0])
-
-            if start_hour > end_hour:
-                self._show_error("結束時間不能早於開始時間。", title="設定錯誤")
-                return
-
-            if url and not is_safe_url(url):
-                self._show_error(
-                    "請使用以 http:// 或 https:// 開頭的有效網址。",
-                    title="設定錯誤",
-                )
-                return
-
-            self.callback(url, start_hour, end_hour)
-            self.destroy()
-
-        except Exception as e:
-            self._show_error(f"發生錯誤：{e}")
-
-    def _test_open_url(self) -> None:
-        """立即測試開啟網頁。"""
-        url = self.url_entry.get().strip()
+    def _test_url(self) -> None:
+        url = self._add_url_entry.get().strip()
         if not url:
             self._show_error("請先輸入網頁網址。")
             return
@@ -201,3 +198,7 @@ class HourlyWebWindow(tk.Toplevel):
         except Exception as e:
             self._show_error(f"無法開啟網頁：{e}")
 
+    def _on_submit(self) -> None:
+        rules = list(getattr(self, '_rules', []))
+        self.callback(rules)
+        self.destroy()

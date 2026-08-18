@@ -19,6 +19,11 @@ class PauseManager:
         """
         self.config_manager = config_manager
         self.notify = notify_callback
+        self._pomodoro_stop: Callable[[], None] = lambda: None
+
+    def set_pomodoro_stop(self, callback: Callable[[], None]) -> None:
+        """設定番茄鐘停止回調，由 ClockLogic 在建立 PomodoroService 後呼叫一次。"""
+        self._pomodoro_stop = callback
 
     @property
     def config(self) -> dict[str, Any]:
@@ -74,14 +79,12 @@ class PauseManager:
 
     def toggle_vacation(
         self,
-        pomodoro_stop_callback: Callable[[], None],
         source: str = 'manual',
     ) -> None:
         """
         切換休假模式。
 
         Args:
-            pomodoro_stop_callback: 用於停止番茄鐘的回調函數
             source: 觸發來源，`'manual'` 表示使用者操作、`'schedule'` 表示排程自動觸發。
                 僅用來記錄，供 `VacationScheduleService` 判斷是否可自動離開休假。
         """
@@ -91,7 +94,7 @@ class PauseManager:
 
         if new_vacation:
             # 開始休假: 停止番茄鐘、記住並暫停提醒
-            pomodoro_stop_callback()
+            self._pomodoro_stop()
             reminder_was_paused = self.get_pause_state('reminder', config=config)
             hourly_web_was_paused = self.get_pause_state('hourly_web', config=config)
             config['vacation_previous_state'] = {

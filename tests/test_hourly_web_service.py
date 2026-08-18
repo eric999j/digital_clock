@@ -24,7 +24,7 @@ class TestHourlyWebService(unittest.TestCase):
             }
         }
         self.mock_config_mgr.load_config.side_effect = AssertionError("should not read config manager")
-        self.service.strategy.check.return_value = False
+        self.service.strategy.check.return_value = None
 
         self.service.check(now=now, config=config_snapshot)
         self.service.strategy.check.assert_called_once_with(config_snapshot['hourly_web_reminder'], now)
@@ -39,7 +39,7 @@ class TestHourlyWebService(unittest.TestCase):
             }
         }
         self.mock_config_mgr.load_config.return_value = loaded_config
-        self.service.strategy.check.return_value = False
+        self.service.strategy.check.return_value = None
 
         self.service.check(now=now)
         self.mock_config_mgr.load_config.assert_called_once()

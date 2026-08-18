@@ -12,7 +12,7 @@ class TestPomodoroService(unittest.TestCase):
             "cycles_before_long_break": 4
         }
         self.callbacks = {} # Mock callbacks if needed
-        self.service = PomodoroService(self.config, self.callbacks)
+        self.service = PomodoroService(lambda: self.config, self.callbacks)
 
     def test_initial_state(self):
         self.assertEqual(self.service.phase, "IDLE")

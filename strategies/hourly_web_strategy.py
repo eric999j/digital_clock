@@ -11,46 +11,51 @@ class HourlyWebReminderStrategy(CheckStrategy):
         self.last_triggered_hour: int = -1
         self._last_triggered_hour_key: str = ""
 
-    def check(self, config: dict[str, Any], now: datetime) -> bool:
+    def check(self, config: dict[str, Any], now: datetime) -> str | None:
         """
         檢查是否應觸發整點網頁提醒。
 
         Args:
-            config: 整點網頁提醒設定 (包含 url, start_hour, end_hour, paused)
+            config: 整點網頁提醒設定
             now: 當前時間
 
         Returns:
-            是否應觸發
+            將要開啟的 URL，或 None 表示不觸發
         """
-        # 檢查是否暫停 (注意：這裡的暫停是在 config 內的，如果 Service 有額外暫停旗標需在 Service 處理或傳入)
-        # 原始代碼直接檢查 config.get('paused')
         if config.get('paused', False):
-            return False
+            return None
 
+        if config.get('work_days_only', True) and now.weekday() > 4:
+            return None
+
+        current_hour_key = now.strftime("%Y-%m-%d %H")
+        if current_hour_key == self._last_triggered_hour_key:
+            return None
+
+        if now.minute > 1:
+            return None
+
+        url_rules: list[dict[str, Any]] = config.get('url_rules', [])
+        if url_rules:
+            for rule in url_rules:
+                start = rule.get('start_hour', 0)
+                end = rule.get('end_hour', 23)
+                if start <= now.hour <= end:
+                    url = rule.get('url', '').strip()
+                    if url:
+                        self.last_triggered_hour = now.hour
+                        self._last_triggered_hour_key = current_hour_key
+                        return url
+            return None
+
+        # 舊版單一 URL 路由
         url = config.get('url', '').strip()
         if not url:
-            return False
-
-        # 根據設定決定是否限制上班日（預設 True，可在設定中關閉）
-        if config.get('work_days_only', True) and now.weekday() > 4:
-            return False
-
-        current_hour = now.hour
-        current_hour_key = now.strftime("%Y-%m-%d %H")
+            return None
         start_hour = config.get('start_hour', 8)
         end_hour = config.get('end_hour', 17)
-
-        # 避免同一日期的小時內重複觸發，但允許隔天同一小時再次觸發
-        if current_hour_key == self._last_triggered_hour_key:
-            return False
-
-        # 檢查是否在指定時段 (Start <= Current <= End)
-        in_time_range = start_hour <= current_hour <= end_hour
-
-        # 檢查是否在整點的前2分鐘內觸發（確保不錯過，原始邏輯為 <= 1）
-        if now.minute <= 1 and in_time_range:
-            self.last_triggered_hour = current_hour
+        if start_hour <= now.hour <= end_hour:
+            self.last_triggered_hour = now.hour
             self._last_triggered_hour_key = current_hour_key
-            return True
-
-        return False
+            return url
+        return None

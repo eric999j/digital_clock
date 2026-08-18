@@ -12,12 +12,10 @@ class TestVacationScheduleService(unittest.TestCase):
         self.mock_config_mgr = MagicMock()
         self.mock_notify = MagicMock()
         self.mock_pause_manager = MagicMock()
-        self.mock_pomodoro_stop = MagicMock()
         self.service = VacationScheduleService(
             self.mock_config_mgr,
             self.mock_notify,
             self.mock_pause_manager,
-            self.mock_pomodoro_stop,
         )
 
     # --- add_schedule ---
@@ -104,7 +102,7 @@ class TestVacationScheduleService(unittest.TestCase):
         self.assertTrue(config['vacation_schedules'][0]['auto_started'])
         self.mock_config_mgr.save_config.assert_called_once_with(config)
         self.mock_pause_manager.toggle_vacation.assert_called_once_with(
-            self.mock_pomodoro_stop, source='schedule'
+            source='schedule'
         )
 
     def test_check_does_not_re_enter_when_already_marked(self) -> None:
@@ -164,7 +162,7 @@ class TestVacationScheduleService(unittest.TestCase):
         self.mock_config_mgr.save_config.assert_called_once_with(config)
         # 自動離開休假
         self.mock_pause_manager.toggle_vacation.assert_called_once_with(
-            self.mock_pomodoro_stop, source='schedule'
+            source='schedule'
         )
 
     def test_check_does_not_exit_when_vacation_is_manual(self) -> None:

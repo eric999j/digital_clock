@@ -32,17 +32,15 @@ class HourlyWebService:
     def config(self) -> dict[str, Any]:
         return self.config_manager.load_config()
 
-    def update_config(self, url: str, start_hour: int, end_hour: int) -> None:
-        """更新整點網頁設定。"""
+    def update_config(self, url_rules: list[dict]) -> None:
+        """更新整點網頁設定，並將第一樢記錄到 url/start_hour/end_hour 供舊版相容。"""
         config = self.config
-        if 'hourly_web_reminder' not in config:
-            config['hourly_web_reminder'] = {}
-
-        config['hourly_web_reminder'].update({
-            'url': url,
-            'start_hour': start_hour,
-            'end_hour': end_hour
-        })
+        hw = config.setdefault('hourly_web_reminder', {})
+        hw['url_rules'] = url_rules
+        if url_rules:
+            hw['url'] = url_rules[0]['url']
+            hw['start_hour'] = url_rules[0]['start_hour']
+            hw['end_hour'] = url_rules[0]['end_hour']
         self.config_manager.save_config(config)
         self.notify(Events.HOURLY_WEB_UPDATED, None)
 
@@ -60,20 +58,18 @@ class HourlyWebService:
         config_data = config if config is not None else self.config
         hourly_config = config_data.get('hourly_web_reminder', {})
 
-        # 策略模式檢查
-        if self.strategy.check(hourly_config, current_time):
-            url = hourly_config.get('url', '').strip()
-            if not url:
-                return
-            if not is_safe_url(url):
-                logger.warning("Refusing to open URL with unsupported scheme: %r", url)
-                return
-            try:
-                webbrowser.open(url, new=2)
-                self.notify(Events.HOURLY_WEB_DUE, url)
-                self._bring_browser_to_front()
-            except Exception as e:
-                logger.error("Error opening URL: %s", e)
+        url = self.strategy.check(hourly_config, current_time)
+        if not url:
+            return
+        if not is_safe_url(url):
+            logger.warning("Refusing to open URL with unsupported scheme: %r", url)
+            return
+        try:
+            webbrowser.open(url, new=2)
+            self.notify(Events.HOURLY_WEB_DUE, url)
+            self._bring_browser_to_front()
+        except Exception as e:
+            logger.error("Error opening URL: %s", e)
 
     def _bring_browser_to_front(self) -> None:
         """嘗試將瀏覽器視窗帶到最前面（僅 Windows）。"""

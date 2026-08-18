@@ -6,15 +6,15 @@ from typing import Any
 class PomodoroService:
     """獨立番茄鐘引擎，不依賴 tkinter。"""
 
-    def __init__(self, config: dict[str, Any], callbacks: dict[str, Callable] | None = None) -> None:
+    def __init__(self, config_getter: Callable[[], dict[str, Any]], callbacks: dict[str, Callable] | None = None) -> None:
         """
         初始化番茄鐘服務。
 
         Args:
-            config: 番茄鐘設定
+            config_getter: 回傳最新番茄鐘設定的 callable，每次 start 時呼叫以取得最新值
             callbacks: 回調函數字典
         """
-        self.config = config
+        self._get_config = config_getter
         self.callbacks = callbacks or {}
         self.phase: str = "IDLE"
         self.remaining_seconds: int = 0
@@ -22,18 +22,20 @@ class PomodoroService:
 
     def start_focus(self) -> None:
         """開始專注階段。"""
+        cfg = self._get_config()
         self.phase = "FOCUS"
-        self.remaining_seconds = self.config["focus_minutes"] * 60
+        self.remaining_seconds = cfg["focus_minutes"] * 60
         self._emit("on_phase_change", self.phase)
 
     def start_break(self) -> None:
         """開始休息階段（短休息或長休息）。"""
-        if self.current_cycle % self.config["cycles_before_long_break"] == 0:
+        cfg = self._get_config()
+        if self.current_cycle % cfg["cycles_before_long_break"] == 0:
             self.phase = "LONG_BREAK"
-            self.remaining_seconds = self.config["long_break"] * 60
+            self.remaining_seconds = cfg["long_break"] * 60
         else:
             self.phase = "SHORT_BREAK"
-            self.remaining_seconds = self.config["short_break"] * 60
+            self.remaining_seconds = cfg["short_break"] * 60
         self._emit("on_phase_change", self.phase)
 
     def tick(self) -> None:

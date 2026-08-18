@@ -28,7 +28,6 @@ class VacationScheduleService:
         config_manager: ConfigManager,
         notify_callback: Callable[[str, Any], None],
         pause_manager: PauseManager,
-        pomodoro_stop_callback: Callable[[], None],
     ) -> None:
         """
         初始化休假排程服務。
@@ -37,12 +36,10 @@ class VacationScheduleService:
             config_manager: 設定管理器
             notify_callback: 通知回調函數 (event, *args)
             pause_manager: 暫停管理器，用來查詢/切換休假狀態
-            pomodoro_stop_callback: 切換休假時停止番茄鐘的回調
         """
         self.config_manager = config_manager
         self.notify = notify_callback
         self.pause_manager = pause_manager
-        self.pomodoro_stop = pomodoro_stop_callback
         self.strategy = VacationScheduleStrategy()
 
     @property
@@ -176,9 +173,9 @@ class VacationScheduleService:
 
         # 觸發狀態變更（呼叫 toggle_vacation 會再次讀寫 config，故放在最後）
         if should_enter:
-            self.pause_manager.toggle_vacation(self.pomodoro_stop, source='schedule')
+            self.pause_manager.toggle_vacation(source='schedule')
         elif should_exit:
-            self.pause_manager.toggle_vacation(self.pomodoro_stop, source='schedule')
+            self.pause_manager.toggle_vacation(source='schedule')
 
     @staticmethod
     def _to_iso(value: str | date) -> str | None:

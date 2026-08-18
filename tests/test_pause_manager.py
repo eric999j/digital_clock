@@ -32,8 +32,9 @@ class TestPauseManager(unittest.TestCase):
         }
         self.mock_config_mgr.load_config.return_value = config
         pomodoro_stop = MagicMock()
+        self.manager.set_pomodoro_stop(pomodoro_stop)
 
-        self.manager.toggle_vacation(pomodoro_stop)
+        self.manager.toggle_vacation()
 
         pomodoro_stop.assert_called_once()
         self.mock_config_mgr.load_config.assert_called_once()
@@ -61,7 +62,7 @@ class TestPauseManager(unittest.TestCase):
         }
         self.mock_config_mgr.load_config.return_value = config
 
-        self.manager.toggle_vacation(MagicMock(), source='schedule')
+        self.manager.toggle_vacation(source='schedule')
 
         self.assertTrue(config['on_vacation'])
         self.assertEqual(config['on_vacation_source'], 'schedule')
@@ -79,7 +80,7 @@ class TestPauseManager(unittest.TestCase):
         }
         self.mock_config_mgr.load_config.return_value = config
 
-        self.manager.toggle_vacation(MagicMock())
+        self.manager.toggle_vacation()
 
         self.mock_config_mgr.load_config.assert_called_once()
         self.mock_config_mgr.save_config.assert_called_once_with(config)

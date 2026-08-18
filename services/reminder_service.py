@@ -22,6 +22,7 @@ class ReminderService:
         self.config_manager = config_manager
         self.notify = notify_callback
         self.strategy = ReminderStrategy()
+        self._last_weekly_minute_key: str = ""
 
     @property
     def config(self) -> dict[str, Any]:
@@ -105,7 +106,10 @@ class ReminderService:
         config_data = config if config is not None else self.config
         reminders = config_data.get('reminders', [])
         time_format = config_data.get('appearance', {}).get('time_formats', {}).get('24h', '%H:%M')
-        triggered_reminders = self.strategy.check(reminders, current_time, time_format=time_format)
+        triggered_reminders, self._last_weekly_minute_key = self.strategy.check(
+            reminders, current_time, time_format=time_format,
+            last_minute_key=self._last_weekly_minute_key,
+        )
 
         reminders_to_delete = []
         for reminder in triggered_reminders:

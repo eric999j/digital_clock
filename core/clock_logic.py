@@ -47,20 +47,21 @@ class ClockLogic:
         self.keyboard_service = KeyboardService(config_manager, self._on_screenshot_triggered)
 
         self.pomodoro = PomodoroService(
-            self.config["pomodoro"],
+            lambda: self.config_manager.load_config(read_only=True).get('pomodoro', {}),
             callbacks={
                 "on_phase_change": self._pomodoro_phase_change,
                 "on_tick": self._pomodoro_tick,
                 "on_complete": self._pomodoro_phase_complete
             }
         )
+        # P2: pomodoro.stop 儲存在 PauseManager 內，避免 VacationScheduleService 直接耗合 Pomodoro
+        self.pause_manager.set_pomodoro_stop(self.pomodoro.stop)
 
-        # 休假排程服務（依賴 pause_manager 與 pomodoro.stop）
+        # 休假排程服務（依賴 pause_manager）
         self.vacation_schedule_service = VacationScheduleService(
             config_manager,
             self.notify_observers,
             self.pause_manager,
-            self.pomodoro.stop,
         )
 
         self.is_hidden: bool = False
@@ -237,8 +238,8 @@ class ClockLogic:
         is_paused = self.pause_manager.get_pause_state('reminder', config=config_snapshot)
         self.reminder_service.check_reminders(is_paused, now=check_time, config=config_snapshot)
 
-    def update_hourly_web_reminder(self, url: str, start_hour: int, end_hour: int) -> None:
-        self.hourly_service.update_config(url, start_hour, end_hour)
+    def update_hourly_web_reminder(self, url_rules: list[dict]) -> None:
+        self.hourly_service.update_config(url_rules)
 
     def toggle_hourly_web_pause(self) -> None:
         self.pause_manager.toggle_pause('hourly_web')
@@ -253,7 +254,7 @@ class ClockLogic:
         return self.pause_manager.get_pause_state('reminder')
 
     def toggle_vacation(self) -> None:
-        self.pause_manager.toggle_vacation(self.pomodoro.stop)
+        self.pause_manager.toggle_vacation()
 
     def is_on_vacation(self) -> bool:
         return self.pause_manager.get_pause_state('vacation')

@@ -64,7 +64,7 @@ class TestReminderService(unittest.TestCase):
             "message": "Due",
             "weekdays": []
         }
-        self.service.strategy.check.return_value = [reminder]
+        self.service.strategy.check.return_value = ([reminder], "2025-12-25 10:00")
         self.config_data['reminders'] = [reminder]
 
         # Act
@@ -91,10 +91,10 @@ class TestReminderService(unittest.TestCase):
         now = datetime(2025, 1, 1, 10, 0, 0)
 
         self.mock_config_mgr.load_config.side_effect = AssertionError("should not read config manager")
-        self.service.strategy.check.return_value = []
+        self.service.strategy.check.return_value = ([], "")
 
         self.service.check_reminders(is_paused=False, now=now, config=provided_config)
-        self.service.strategy.check.assert_called_once_with([], now, time_format='%H:%M')
+        self.service.strategy.check.assert_called_once_with([], now, time_format='%H:%M', last_minute_key="")
 
     def test_remove_expired_reminders_drops_invalid_onetime_data(self):
         future = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
