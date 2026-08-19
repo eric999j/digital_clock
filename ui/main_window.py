@@ -244,6 +244,7 @@ class DigitalClock(Observer):
         self._update_reminder_menu()
 
     def _on_hourly_web_updated(self, *args) -> None:
+        self.config = self.logic.get_config()
         self._show_themed_info("整點網頁提醒設定已更新！")
 
     def _on_hourly_web_pause_toggled(self, is_paused: bool, *args) -> None:
@@ -296,6 +297,7 @@ class DigitalClock(Observer):
 
         def open_window() -> None:
             try:
+                self.config = self.logic.get_config()
                 theme = self._get_current_theme()
                 current_config = self.config.get('hourly_web_reminder', {})
                 geometry = self.config['ui_behavior']['hourly_web_window_geometry']

@@ -15,6 +15,7 @@ class HourlyWebWindow(tk.Toplevel):
                  current_config: dict[str, Any] | None = None, geometry: str = "560x430") -> None:
         super().__init__(parent)
         self.callback = callback
+        self._rules: list[dict[str, Any]] = []
         self.theme = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
         self.current_config = current_config or {}
         self.transient(parent)
@@ -200,5 +201,17 @@ class HourlyWebWindow(tk.Toplevel):
 
     def _on_submit(self) -> None:
         rules = list(getattr(self, '_rules', []))
+        pending_url = self._add_url_entry.get().strip()
+        if pending_url:
+            if not is_safe_url(pending_url):
+                self._show_error("請使用以 http:// 或 https:// 開頭的有效網址。")
+                return
+            start_hour = int(self._start_combo.get().split(':')[0])
+            end_hour = int(self._end_combo.get().split(':')[0])
+            if start_hour > end_hour:
+                self._show_error("結束時間不能早於開始時間。")
+                return
+            rules.append({'url': pending_url, 'start_hour': start_hour, 'end_hour': end_hour})
+            self._refresh_listbox(rules)
         self.callback(rules)
         self.destroy()
