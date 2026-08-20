@@ -9,6 +9,46 @@
 - **背景執行**：更改副檔名為 `.pyw` 即可在 Windows 上無主控台視窗背景執行。
 - **無干擾**：程式圖示不顯示在 Windows 工作列上。
 
+## 跨平台雙擊啟動
+
+本專案已提供各平台的雙擊啟動檔，會自動完成以下流程：
+1. 建立 `.venv` 虛擬環境（若尚未建立）
+2. 安裝 `requirements.txt` 依賴
+3. 啟動 `main.py`
+
+### Windows
+- 直接雙擊 `start_windows.bat`
+
+### macOS
+1. 首次在 Terminal 執行：`chmod +x start_macos.command`
+2. 之後可在 Finder 直接雙擊 `start_macos.command`
+
+### Linux
+1. 首次在 Terminal 執行：`chmod +x start_linux.sh`
+2. 之後可在檔案管理器雙擊 `start_linux.sh`（若系統詢問，選擇 Run）
+
+## 正式打包版本（Release Build）
+
+本專案提供三平台打包腳本，使用 PyInstaller 產生單一執行檔（onefile）。
+
+### Windows 打包
+- 雙擊 `package_windows.bat`
+- 產出檔案：`dist/DigitalClock.exe`
+
+### macOS 打包
+1. 首次執行授權：`chmod +x package_macos.sh`
+2. 執行：`./package_macos.sh`
+3. 產出檔案：`dist/DigitalClock`
+
+### Linux 打包
+1. 首次執行授權：`chmod +x package_linux.sh`
+2. 執行：`./package_linux.sh`
+3. 產出檔案：`dist/DigitalClock`
+
+### 注意事項
+- 建議在目標平台各自打包（Windows 產 Windows、macOS 產 macOS、Linux 產 Linux）。
+- 若要分發給 macOS 使用者，通常還需要額外做簽章與公證。
+
 ---
 
 ## 架構設計（2025年重構版 v2.0）
