@@ -134,6 +134,7 @@ class HourlyWebWindow(tk.Toplevel):
             bg='white', fg='black', font=('Consolas', 9), activestyle='dotbox',
         )
         self._rules_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._rules_listbox.bind('<Double-Button-1>', self._open_selected_rule_url)
         sb = ttk.Scrollbar(cols, orient=tk.VERTICAL, command=self._rules_listbox.yview)
         sb.pack(side=tk.LEFT, fill=tk.Y)
         self._rules_listbox.configure(yscrollcommand=sb.set)
@@ -185,6 +186,26 @@ class HourlyWebWindow(tk.Toplevel):
         rules = list(getattr(self, '_rules', []))
         del rules[sel[0]]
         self._refresh_listbox(rules)
+
+    def _open_selected_rule_url(self, _event: tk.Event) -> None:
+        """雙擊規則清單時開啟該列 URL。"""
+        sel = self._rules_listbox.curselection()
+        if not sel:
+            return
+
+        idx = sel[0]
+        if idx >= len(self._rules):
+            return
+
+        url = str(self._rules[idx].get('url', '')).strip()
+        if not is_safe_url(url):
+            self._show_error("此規則的網址無效，請先編輯為 http:// 或 https:// 開頭。")
+            return
+
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            self._show_error(f"無法開啟網頁：{e}")
 
     def _test_url(self) -> None:
         url = self._add_url_entry.get().strip()
