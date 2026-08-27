@@ -140,7 +140,7 @@ def themed_info(
 def themed_confirm(
     parent: tk.Misc,
     message: str,
-    yes_callback: 'Callable[[], None]',
+    yes_callback: Callable[[], None],
     theme: dict[str, str] | None = None,
     title: str = "確認",
     yes_text: str = "是",
