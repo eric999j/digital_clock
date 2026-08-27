@@ -6,6 +6,24 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..main_window import DigitalClock
 
+
+_MENU_LABEL_MAX_CHARS = 42
+
+
+def _truncate(text: str, limit: int = _MENU_LABEL_MAX_CHARS) -> str:
+    """依中英文字寬粗略截斷選單標籤（中文字算 2 單位）避免撐爆選單。"""
+    weight = 0
+    out: list[str] = []
+    for ch in text:
+        step = 2 if ord(ch) > 127 else 1
+        if weight + step > limit:
+            out.append('…')
+            return ''.join(out)
+        out.append(ch)
+        weight += step
+    return ''.join(out)
+
+
 class ReminderMenu(Menu):
     """提醒選單。"""
 
@@ -73,4 +91,4 @@ class ReminderMenu(Menu):
                 item_menu.add_command(label="編輯", command=lambda x=r: self.logic.open_reminder_window(x))
                 item_menu.add_command(label="刪除", command=lambda x=r: self.ui._confirm_delete_reminder(x))
 
-                self.add_cascade(label=label, menu=item_menu)
+                self.add_cascade(label=_truncate(label), menu=item_menu)

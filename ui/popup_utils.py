@@ -9,6 +9,15 @@ import webbrowser
 from collections.abc import Callable
 from tkinter import messagebox
 
+from ui.theme_utils import (
+    BUTTON_BG,
+    BUTTON_FG,
+    BUTTON_HOVER_BG,
+    BUTTON_HOVER_FG,
+    BUTTON_PRESSED_BG,
+    compute_separator_color,
+)
+
 logger = logging.getLogger(__name__)
 
 # 匹配 http/https URL 的正規表達式
@@ -162,6 +171,74 @@ def _estimate_display_lines(message: str, chars_per_line: int = 38) -> int:
     return total
 
 
+def _position_popup(popup: tk.Toplevel, parent: tk.Misc | None) -> None:
+    """智慧定位 popup：優先靠近主視窗、放不下時退回螢幕中央並確保完整可見。"""
+    try:
+        popup.update_idletasks()
+        w, h = popup.winfo_width(), popup.winfo_height()
+        sw, sh = popup.winfo_screenwidth(), popup.winfo_screenheight()
+
+        target_x: int | None = None
+        target_y: int | None = None
+        if parent is not None:
+            try:
+                px = parent.winfo_rootx()
+                py = parent.winfo_rooty()
+                pw = parent.winfo_width()
+                ph = parent.winfo_height()
+                if pw > 1 and ph > 1:
+                    target_x = px + (pw - w) // 2
+                    target_y = py + ph + 12  # 顯示在主視窗下方，避開時鐘本體
+                    if target_y + h > sh - 8:
+                        target_y = max(8, py - h - 12)  # 空間不足改放在上方
+            except tk.TclError:
+                target_x = target_y = None
+
+        if target_x is None or target_y is None:
+            target_x = (sw - w) // 2
+            target_y = (sh - h) // 2
+
+        # clamp 到螢幕內，避免時鐘靠邊時 popup 跑出可視範圍
+        target_x = max(8, min(target_x, sw - w - 8))
+        target_y = max(8, min(target_y, sh - h - 8))
+        popup.geometry(f"+{target_x}+{target_y}")
+    except tk.TclError as e:
+        logger.debug("Popup positioning failed: %s", e)
+
+
+def _themed_button(
+    parent: tk.Misc,
+    text: str,
+    command: Callable[[], None],
+    bg: str,
+    fg: str,
+    sys_font: str,
+    is_default: bool = False,
+) -> tk.Button:
+    """建立統一風格的按鈕（灰底黑字，不套用主題），確保任何主題下都清晰可辨。
+
+    ``bg`` / ``fg`` 參數保留以維持既有 API，實際不再使用。
+    """
+    _ = bg, fg  # signature 相容
+    weight = 'bold' if is_default else 'normal'
+    return tk.Button(
+        parent,
+        text=text,
+        width=8,
+        font=(sys_font, 10, weight),
+        relief='flat',
+        borderwidth=1,
+        cursor='hand2',
+        command=command,
+        bg=BUTTON_BG,
+        fg=BUTTON_FG,
+        activebackground=BUTTON_HOVER_BG,
+        activeforeground=BUTTON_HOVER_FG,
+        highlightthickness=1,
+        highlightbackground=BUTTON_PRESSED_BG,
+    )
+
+
 def show_reminder_popup_window(
     parent: tk.Misc,
     message: str,
@@ -190,24 +267,15 @@ def show_reminder_popup_window(
     bg = theme['bg'] if theme else None
     fg = theme['fg'] if theme else None
 
-    # 分隔線顏色（依背景亮暗微調）
-    sep_color = "#cccccc"
-    if bg:
-        try:
-            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
-            brightness = (r * 299 + g * 587 + b * 114) / 1000
-            adj = 45
-            if brightness < 128:
-                sep_color = f"#{min(255,r+adj):02x}{min(255,g+adj):02x}{min(255,b+adj):02x}"
-            else:
-                sep_color = f"#{max(0,r-adj):02x}{max(0,g-adj):02x}{max(0,b-adj):02x}"
-        except Exception:
-            pass
+    sep_color = compute_separator_color(bg)
 
-    # 標題圖示與超連結顏色
-    icon_char = {"提醒": "🔔", "成功": "✓", "錯誤": "✕", "設定錯誤": "⚠", "警告": "⚠"}.get(title, "🔔")
-    dark_bgs = {'#1e3a5f', '#2c3e50', '#1c1c1c', '#3a1a08', '#2d1b10', '#6b4226'}
-    link_color = '#74B9FF' if (bg and bg.lower() in dark_bgs) else '#0066CC'
+    # 標題圖示與超連結顏色（依主題明暗自動選色，取代原本硬編碼白名單）
+    from ui.theme_utils import is_dark_theme
+    icon_char = {
+        "提醒": "🔔", "成功": "✓", "錯誤": "✕", "設定錯誤": "⚠", "警告": "⚠",
+        "確認": "?", "確認刪除": "🗑", "番茄鐘": "🍅",
+    }.get(title, "🔔")
+    link_color = '#74B9FF' if is_dark_theme(bg) else '#0066CC'
 
     try:
         popup = tk.Toplevel(parent)
@@ -277,26 +345,12 @@ def show_reminder_popup_window(
         # ── 按鈕列 ──
         btn_area = tk.Frame(outer, bg=actual_bg)
         btn_area.pack(fill=tk.X, pady=(14, 0))
-        btn = tk.Button(
-            btn_area,
-            text=ok_text,
-            width=8,
-            font=(sys_font, 10),
-            relief='groove',
-            cursor='hand2',
-            command=popup.destroy,
-            bg=actual_bg,
-            fg=actual_fg,
-            activebackground=actual_fg,
-            activeforeground=actual_bg,
-        )
+        btn = _themed_button(btn_area, ok_text, popup.destroy, actual_bg, actual_fg, sys_font, is_default=True)
         btn.pack(side=tk.RIGHT)
         popup.bind('<Return>', lambda e: popup.destroy())
+        popup.bind('<Escape>', lambda e: popup.destroy())
 
-        popup.update_idletasks()
-        w, h = popup.winfo_width(), popup.winfo_height()
-        sw, sh = popup.winfo_screenwidth(), popup.winfo_screenheight()
-        popup.geometry(f"+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}")
+        _position_popup(popup, parent)
         popup.lift()
         return popup
     except tk.TclError as e:
@@ -321,18 +375,7 @@ def show_confirm_popup_window(
 
     bg = theme['bg'] if theme else None
     fg = theme['fg'] if theme else None
-    sep_color = "#cccccc"
-    if bg:
-        try:
-            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
-            brightness = (r * 299 + g * 587 + b * 114) / 1000
-            adj = 45
-            if brightness < 128:
-                sep_color = f"#{min(255,r+adj):02x}{min(255,g+adj):02x}{min(255,b+adj):02x}"
-            else:
-                sep_color = f"#{max(0,r-adj):02x}{max(0,g-adj):02x}{max(0,b-adj):02x}"
-        except Exception:
-            pass
+    sep_color = compute_separator_color(bg)
 
     try:
         popup = tk.Toplevel(parent)
@@ -353,7 +396,8 @@ def show_confirm_popup_window(
 
         header = tk.Frame(outer, bg=actual_bg)
         header.pack(fill=tk.X)
-        tk.Label(header, text="?", font=(sys_font, 15), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
+        icon = "🗑" if "刪除" in title else "?"
+        tk.Label(header, text=icon, font=(sys_font, 15), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
         tk.Label(header, text=f"  {title}", font=(sys_font, 12, 'bold'), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
 
         tk.Frame(outer, bg=sep_color, height=1).pack(fill=tk.X, pady=(10, 12))
@@ -377,28 +421,13 @@ def show_confirm_popup_window(
             popup.destroy()
             yes_callback()
 
-        tk.Button(
-            btn_area, text=yes_text, width=8,
-            font=(sys_font, 10), relief='groove', cursor='hand2',
-            command=on_yes,
-            bg=actual_bg, fg=actual_fg,
-            activebackground=actual_fg, activeforeground=actual_bg,
-        ).pack(side=tk.RIGHT, padx=(4, 0))
-        tk.Button(
-            btn_area, text=no_text, width=8,
-            font=(sys_font, 10), relief='groove', cursor='hand2',
-            command=popup.destroy,
-            bg=actual_bg, fg=actual_fg,
-            activebackground=actual_fg, activeforeground=actual_bg,
-        ).pack(side=tk.RIGHT)
+        _themed_button(btn_area, yes_text, on_yes, actual_bg, actual_fg, sys_font, is_default=True).pack(side=tk.RIGHT, padx=(4, 0))
+        _themed_button(btn_area, no_text, popup.destroy, actual_bg, actual_fg, sys_font).pack(side=tk.RIGHT)
 
         popup.bind('<Return>', lambda e: on_yes())
         popup.bind('<Escape>', lambda e: popup.destroy())
 
-        popup.update_idletasks()
-        w, h = popup.winfo_width(), popup.winfo_height()
-        sw, sh = popup.winfo_screenwidth(), popup.winfo_screenheight()
-        popup.geometry(f"+{max(0,(sw-w)//2)}+{max(0,(sh-h)//2)}")
+        _position_popup(popup, parent)
         popup.lift()
         return popup
     except tk.TclError as e:

@@ -2,8 +2,10 @@
 import tkinter as tk
 from collections.abc import Callable
 from datetime import datetime, timedelta
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from typing import Any
+
+from ui.theme_utils import apply_themed_ttk_style, themed_error
 
 
 class ReminderWindow(tk.Toplevel):
@@ -29,7 +31,7 @@ class ReminderWindow(tk.Toplevel):
         self.title("編輯提醒" if reminder_to_edit else "設定提醒")
         self.geometry(geometry)
         self.resizable(False, False)
-        self.grab_set()  # 鎖定焦點
+        # 不使用 grab_set，讓主時鐘仍可接收拖曳事件
 
         self._last_date_selection: dict[str, str] = {}  # 用於儲存上次的日期選擇
 
@@ -41,7 +43,7 @@ class ReminderWindow(tk.Toplevel):
             if self.reminder_to_edit:
                 self._load_reminder_data()
         except Exception as e:
-            messagebox.showerror("錯誤", f"無法建立提醒視窗：{e}", parent=parent)
+            themed_error(parent, f"無法建立提醒視窗：{e}", self.theme, title="錯誤")
             self.destroy()
 
     def _apply_theme(self) -> None:
@@ -50,49 +52,11 @@ class ReminderWindow(tk.Toplevel):
 
     def _show_error(self, msg: str, title: str = "錯誤") -> None:
         """以主題樣式顯示錯誤視窗。"""
-        from ui.popup_utils import show_reminder_popup_window
-        show_reminder_popup_window(self, msg, self.theme, title=title, ok_text="確定")
+        themed_error(self, msg, self.theme, title=title)
 
     def _setup_style(self) -> None:
-        """設置 ttk 樣式以符合主題，使用自定義樣式名稱以避免污染全域樣式。"""
-        style = ttk.Style()
-
-        bg = self.theme['bg']
-        fg = self.theme['fg']
-
-        # 判斷背景是亮色還是暗色
-        try:
-            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
-            brightness = (r * 299 + g * 587 + b * 114) / 1000
-            is_dark_theme = brightness < 128
-        except (ValueError, IndexError):
-            is_dark_theme = False  # 預設為亮色主題
-
-        # 為不同的 ttk 元件設置"自定義"樣式 (Prefix with 'Reminder.')
-        style.configure('Reminder.TFrame', background=bg)
-        style.configure('Reminder.TLabelframe', background=bg, foreground=fg)
-        style.configure('Reminder.TLabelframe.Label', background=bg, foreground=fg)
-        style.configure('Reminder.TLabel', background=bg, foreground=fg)
-        style.configure('Reminder.TCombobox', fieldbackground='white', foreground='black')
-        style.configure('Reminder.TEntry', fieldbackground='white', foreground='black')
-        style.configure('Reminder.TCheckbutton', background=bg, foreground=fg)
-
-        # 根據主題的亮暗決定懸停顏色
-        if is_dark_theme:
-            # 暗色主題：按鈕文字固定為黑色，懸停時背景變亮
-            style.configure('Reminder.TButton', background=bg, foreground='#000000', borderwidth=1)
-            hover_bg = '#666666'
-            hover_fg = '#000000'
-        else:
-            # 亮色主題：按鈕文字預設為主題前景，懸停時背景變暗
-            style.configure('Reminder.TButton', background=bg, foreground=fg, borderwidth=1)
-            hover_bg = '#CCCCCC'
-            hover_fg = '#000000'
-
-        style.map('Reminder.TButton',
-                  relief=[('pressed', 'sunken'), ('!pressed', 'raised')],
-                  background=[('active', hover_bg), ('pressed', hover_bg)],
-                  foreground=[('active', hover_fg), ('pressed', hover_fg)])
+        """套用共用主題化 ttk 樣式（以 ``Reminder.`` 為前綴）。"""
+        apply_themed_ttk_style('Reminder', self.theme)
 
     def _create_widgets(self) -> None:
         """建立視窗中的所有元件。"""

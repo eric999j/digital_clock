@@ -172,7 +172,13 @@ class DigitalClock(Observer):
         self.update_pomodoro_display(phase, remaining)
 
     def _on_pomodoro_phase_complete(self, new_phase: str, *args) -> None:
-        messagebox.showinfo("番茄鐘", f"階段結束，進入 {new_phase}")
+        from ui.popup_utils import show_reminder_popup_window
+        phase_map = {"FOCUS": "專注", "SHORT_BREAK": "短休息", "LONG_BREAK": "長休息", "IDLE": "就緒"}
+        phase_text = phase_map.get(new_phase, new_phase)
+        theme = self._get_current_theme()
+        self.root.after_idle(lambda: show_reminder_popup_window(
+            self.root, f"階段結束，進入 {phase_text}", theme, title="番茄鐘", ok_text="確定"
+        ))
 
     def _on_reminder_due(self, reminder: dict[str, Any], *args) -> None:
         from ui.popup_utils import show_reminder_popup_window
@@ -283,6 +289,7 @@ class DigitalClock(Observer):
 
         def open_window() -> None:
             try:
+                # 先從記憶體取 theme，避免磁碟讀取覆蓋掉尚未 flush 的主題切換
                 theme = self._get_current_theme()
                 geometry = self.config['ui_behavior']['reminder_window_geometry']
                 ReminderWindow(self.root, self.logic.add_reminder, theme, reminder_to_edit, geometry=geometry)
@@ -297,9 +304,14 @@ class DigitalClock(Observer):
 
         def open_window() -> None:
             try:
-                self.config = self.logic.get_config()
+                # 主題以「當前記憶體中已套用的主題」為準，避免磁碟版本尚未 flush 造成不一致
                 theme = self._get_current_theme()
-                current_config = self.config.get('hourly_web_reminder', {})
+                fresh = self.logic.get_config()
+                # 只更新非主題類欄位（提醒清單、整點網頁規則等會由 service 直接寫盤）
+                self.config['hourly_web_reminder'] = fresh.get('hourly_web_reminder', {})
+                self.config['reminders'] = fresh.get('reminders', [])
+                self.config['vacation_schedules'] = fresh.get('vacation_schedules', [])
+                current_config = self.config['hourly_web_reminder']
                 geometry = self.config['ui_behavior']['hourly_web_window_geometry']
                 HourlyWebWindow(self.root, self.logic.update_hourly_web_reminder, theme, current_config, geometry=geometry)
             except Exception as e:
@@ -468,30 +480,38 @@ class DigitalClock(Observer):
             menu = self.context_menu
 
         theme = self.config['themes'].get(self.config['appearance']['theme'])
-        if theme:
-            fg_color = theme['fg']
-            bg_color = theme['bg']
+        if not theme:
+            return
 
-            try:
-                # 設置菜單的前景色和背景色
-                menu.config(fg=fg_color, bg=bg_color, selectcolor=fg_color)
+        fg_color = theme['fg']
+        bg_color = theme['bg']
 
-                # 遍歷所有項目，如果是 cascade 類型，則遞歸更新子菜單
-                last_index = menu.index('end')
-                if last_index is None:
-                    return
+        # 短路：主選單樹已套用過相同顏色時跳過遞迴，減少每次右鍵開選單的無謂重繪
+        is_root_call = menu is getattr(self, 'context_menu', None)
+        if is_root_call:
+            cache_key = (bg_color, fg_color)
+            if getattr(self, '_menu_color_cache_key', None) == cache_key:
+                return
+            self._menu_color_cache_key = cache_key
 
-                for i in range(last_index + 1):
-                    if menu.type(i) == 'cascade':
-                        try:
-                            submenu_name = menu.entrycget(i, 'menu')
-                            if submenu_name:
-                                submenu = menu.nametowidget(submenu_name)
-                                self._update_menu_colors(submenu)
-                        except (tk.TclError, AttributeError):
-                            continue
-            except (tk.TclError, AttributeError):
-                pass
+        try:
+            menu.config(fg=fg_color, bg=bg_color, selectcolor=fg_color)
+
+            last_index = menu.index('end')
+            if last_index is None:
+                return
+
+            for i in range(last_index + 1):
+                if menu.type(i) == 'cascade':
+                    try:
+                        submenu_name = menu.entrycget(i, 'menu')
+                        if submenu_name:
+                            submenu = menu.nametowidget(submenu_name)
+                            self._update_menu_colors(submenu)
+                    except (tk.TclError, AttributeError):
+                        continue
+        except (tk.TclError, AttributeError):
+            pass
 
     def _confirm_delete_reminder(self, reminder: dict[str, Any]) -> None:
         """
@@ -533,11 +553,14 @@ class DigitalClock(Observer):
             detail += f"\n備註: {note}"
         msg = f"您確定要刪除以下休假排程嗎？\n\n{detail}"
 
-        def confirm_delete() -> None:
-            if messagebox.askyesno("確認刪除", msg, parent=self.root):
-                self.logic.delete_vacation_schedule(schedule)
-
-        self.root.after_idle(confirm_delete)
+        from ui.popup_utils import show_confirm_popup_window
+        theme = self._get_current_theme()
+        self.root.after_idle(lambda: show_confirm_popup_window(
+            self.root, msg,
+            yes_callback=lambda: self.logic.delete_vacation_schedule(schedule),
+            theme=theme,
+            title="確認刪除",
+        ))
 
     def _show_context_menu(self, event: tk.Event) -> None:
         """
@@ -746,7 +769,8 @@ class DigitalClock(Observer):
             if self._current_display_text:
                 self._draw_static_text(self._current_display_text)
 
-            # 更新所有菜單的配色 (遞歸)
+            # 更新所有菜單的配色 (遞歸)。切換主題後強制失效快取
+            self._menu_color_cache_key = None
             self._update_menu_colors(self.context_menu)
 
             if save:
@@ -779,16 +803,35 @@ class DigitalClock(Observer):
             except Exception:
                 avail_width = 200
 
-            # 從原始字型大小開始，逐步縮小直到可以完整顯示日期或到達最小字型
             min_size = 8
             family = getattr(self, '_orig_font_family', self.config['appearance']['font_family'])
             start_size = getattr(self, '_orig_font_size', self.config['appearance']['font_size'])
-            chosen_size = start_size
-            test_font = tkfont.Font(family=family, size=chosen_size)
-            # 若日期過長，逐步減少字型大小
-            while test_font.measure(date_text) > avail_width and chosen_size > min_size:
-                chosen_size -= 1
-                test_font = tkfont.Font(family=family, size=chosen_size)
+
+            # 快取上次的字寬計算結果，避免每次 hover 都重複建立 tkfont 並線性測量
+            cache_key = (family, start_size, date_text, avail_width)
+            cached_size = getattr(self, '_hover_size_cache', {}).get(cache_key)
+            if cached_size is not None:
+                chosen_size = cached_size
+            else:
+                # 用 self._anim_font 進行測量（configure 開銷比建立新物件低）
+                probe = self._anim_font
+                try:
+                    probe.configure(family=family, size=start_size)
+                except tk.TclError:
+                    probe = tkfont.Font(family=family, size=start_size)
+                chosen_size = start_size
+                while probe.measure(date_text) > avail_width and chosen_size > min_size:
+                    chosen_size -= 1
+                    try:
+                        probe.configure(size=chosen_size)
+                    except tk.TclError:
+                        break
+                if not hasattr(self, '_hover_size_cache'):
+                    self._hover_size_cache = {}
+                # 限制快取大小
+                if len(self._hover_size_cache) > 32:
+                    self._hover_size_cache.clear()
+                self._hover_size_cache[cache_key] = chosen_size
 
             # 暫存原本的字型設定，用於後續還原
             self._hover_orig_font_size = self.config['appearance']['font_size']

@@ -58,18 +58,24 @@ class HourlyWebService:
         config_data = config if config is not None else self.config
         hourly_config = config_data.get('hourly_web_reminder', {})
 
-        url = self.strategy.check(hourly_config, current_time)
-        if not url:
+        urls = self.strategy.check(hourly_config, current_time)
+        if not urls:
             return
-        if not is_safe_url(url):
-            logger.warning("Refusing to open URL with unsupported scheme: %r", url)
-            return
-        try:
-            webbrowser.open(url, new=2)
-            self.notify(Events.HOURLY_WEB_DUE, url)
+
+        opened_any = False
+        for url in urls:
+            if not is_safe_url(url):
+                logger.warning("Refusing to open URL with unsupported scheme: %r", url)
+                continue
+            try:
+                webbrowser.open(url, new=2)
+                self.notify(Events.HOURLY_WEB_DUE, url)
+                opened_any = True
+            except Exception as e:
+                logger.error("Error opening URL: %s", e)
+
+        if opened_any:
             self._bring_browser_to_front()
-        except Exception as e:
-            logger.error("Error opening URL: %s", e)
 
     def _bring_browser_to_front(self) -> None:
         """嘗試將瀏覽器視窗帶到最前面（僅 Windows）。"""

@@ -8,6 +8,22 @@ if TYPE_CHECKING:
     from ..main_window import DigitalClock
 
 
+_MENU_LABEL_MAX_CHARS = 42
+
+
+def _truncate(text: str, limit: int = _MENU_LABEL_MAX_CHARS) -> str:
+    weight = 0
+    out: list[str] = []
+    for ch in text:
+        step = 2 if ord(ch) > 127 else 1
+        if weight + step > limit:
+            out.append('…')
+            return ''.join(out)
+        out.append(ch)
+        weight += step
+    return ''.join(out)
+
+
 class VacationMenu(Menu):
     """休假模式選單：包含立即切換、新增排程、既有排程列表。"""
 
@@ -49,7 +65,7 @@ class VacationMenu(Menu):
             return
 
         for schedule in upcoming:
-            self.add_cascade(label=self._format_label(schedule), menu=self._build_item_menu(schedule))
+            self.add_cascade(label=_truncate(self._format_label(schedule)), menu=self._build_item_menu(schedule))
 
     def _build_item_menu(self, schedule: dict[str, Any]) -> Menu:
         """建立單筆排程的子選單（刪除操作）。"""

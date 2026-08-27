@@ -6,6 +6,7 @@ from tkinter import ttk
 from typing import Any
 
 from core.url_validator import is_safe_url
+from ui.theme_utils import apply_themed_ttk_style, themed_error
 
 
 class HourlyWebWindow(tk.Toplevel):
@@ -22,7 +23,7 @@ class HourlyWebWindow(tk.Toplevel):
         self.title("整點網頁提醒設定")
         self.geometry(geometry)
         self.resizable(False, False)
-        self.grab_set()
+        # 不使用 grab_set，讓主時鐘仍可接收拖曳事件
 
         try:
             self._setup_style()
@@ -30,7 +31,7 @@ class HourlyWebWindow(tk.Toplevel):
             self._create_widgets()
             self._load_config()
         except Exception as e:
-            self._show_error(f"無法建立設定視窗：{e}")
+            themed_error(parent, f"無法建立設定視窗：{e}", self.theme, title="錯誤")
             self.destroy()
 
     def _apply_theme(self) -> None:
@@ -39,42 +40,11 @@ class HourlyWebWindow(tk.Toplevel):
 
     def _show_error(self, msg: str, title: str = "錯誤") -> None:
         """以主題樣式顯示錯誤視窗。"""
-        from ui.popup_utils import show_reminder_popup_window
-        show_reminder_popup_window(self, msg, self.theme, title=title, ok_text="確定")
+        themed_error(self, msg, self.theme, title=title)
 
     def _setup_style(self) -> None:
-        """設置 ttk 樣式以符合主題。"""
-        style = ttk.Style()
-        bg = self.theme['bg']
-        fg = self.theme['fg']
-
-        try:
-            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
-            brightness = (r * 299 + g * 587 + b * 114) / 1000
-            is_dark_theme = brightness < 128
-        except (ValueError, IndexError):
-            is_dark_theme = False
-
-        style.configure('HourlyWeb.TFrame', background=bg)
-        style.configure('HourlyWeb.TLabelframe', background=bg, foreground=fg)
-        style.configure('HourlyWeb.TLabelframe.Label', background=bg, foreground=fg)
-        style.configure('HourlyWeb.TLabel', background=bg, foreground=fg)
-        style.configure('HourlyWeb.TCheckbutton', background=bg, foreground=fg)
-        style.configure('HourlyWeb.TEntry', fieldbackground='white', foreground='black')
-
-        if is_dark_theme:
-            style.configure('HourlyWeb.TButton', background=bg, foreground='#000000', borderwidth=1)
-            hover_bg = '#666666'
-            hover_fg = '#000000'
-        else:
-            style.configure('HourlyWeb.TButton', background=bg, foreground=fg, borderwidth=1)
-            hover_bg = '#CCCCCC'
-            hover_fg = '#000000'
-
-        style.map('HourlyWeb.TButton',
-                  relief=[('pressed', 'sunken'), ('!pressed', 'raised')],
-                  background=[('active', hover_bg), ('pressed', hover_bg)],
-                  foreground=[('active', hover_fg), ('pressed', hover_fg)])
+        """套用共用主題化 ttk 樣式（以 ``HourlyWeb.`` 為前綴）。"""
+        apply_themed_ttk_style('HourlyWeb', self.theme)
 
     def _create_widgets(self) -> None:
         outer = ttk.Frame(self, padding="12", style='HourlyWeb.TFrame')

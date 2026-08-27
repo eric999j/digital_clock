@@ -99,6 +99,48 @@ class TestHourlyWebReminderStrategy(unittest.TestCase):
     def test_fresh_instance_has_no_triggered_hour(self):
         self.assertEqual(self.strategy.last_triggered_hour, -1)
 
+    # --- url_rules 多命中 ---
+
+    def test_url_rules_returns_all_matched_urls(self):
+        """同一時段有多個規則命中時應全部回傳。"""
+        config = {
+            'url_rules': [
+                {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 12},
+                {'url': 'https://b.example', 'start_hour': 9, 'end_hour': 10},
+                {'url': 'https://c.example', 'start_hour': 13, 'end_hour': 17},
+            ],
+            'paused': False,
+            'work_days_only': False,
+        }
+        now = datetime(2025, 1, 6, 9, 0, 0)
+        result = self.strategy.check(config, now)
+        self.assertEqual(result, ['https://a.example', 'https://b.example'])
+
+    def test_url_rules_returns_empty_when_no_match(self):
+        """時段外沒有命中應回傳空 list。"""
+        config = {
+            'url_rules': [
+                {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 10},
+            ],
+            'paused': False,
+            'work_days_only': False,
+        }
+        now = datetime(2025, 1, 6, 15, 0, 0)
+        self.assertEqual(self.strategy.check(config, now), [])
+
+    def test_url_rules_dedupe_same_url(self):
+        """相同 URL 命中多條規則時，只回傳一次避免重複開啟。"""
+        config = {
+            'url_rules': [
+                {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 12},
+                {'url': 'https://a.example', 'start_hour': 9, 'end_hour': 10},
+            ],
+            'paused': False,
+            'work_days_only': False,
+        }
+        now = datetime(2025, 1, 6, 9, 0, 0)
+        self.assertEqual(self.strategy.check(config, now), ['https://a.example'])
+
 
 if __name__ == '__main__':
     unittest.main()

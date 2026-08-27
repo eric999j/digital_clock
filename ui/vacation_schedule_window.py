@@ -2,7 +2,9 @@
 import tkinter as tk
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from tkinter import messagebox, ttk
+from tkinter import ttk
+
+from ui.theme_utils import apply_themed_ttk_style, themed_error
 
 
 class VacationScheduleWindow(tk.Toplevel):
@@ -31,7 +33,7 @@ class VacationScheduleWindow(tk.Toplevel):
         self.title("新增休假排程")
         self.geometry(geometry)
         self.resizable(False, False)
-        self.grab_set()
+        # 不使用 grab_set，讓主時鐘仍可接收拖曳事件
 
         try:
             self._setup_style()
@@ -39,7 +41,7 @@ class VacationScheduleWindow(tk.Toplevel):
             self._create_widgets()
             self._populate_options()
         except Exception as e:
-            messagebox.showerror("錯誤", f"無法建立休假排程視窗：{e}", parent=parent)
+            themed_error(parent, f"無法建立休假排程視窗：{e}", self.theme, title="錯誤")
             self.destroy()
 
     def _apply_theme(self) -> None:
@@ -47,44 +49,11 @@ class VacationScheduleWindow(tk.Toplevel):
 
     def _show_error(self, msg: str, title: str = "錯誤") -> None:
         """以主題樣式顯示錯誤視窗。"""
-        from ui.popup_utils import show_reminder_popup_window
-        show_reminder_popup_window(self, msg, self.theme, title=title, ok_text="確定")
+        themed_error(self, msg, self.theme, title=title)
 
     def _setup_style(self) -> None:
-        """使用自訂樣式（Vacation.*）避免污染全域 ttk 樣式。"""
-        style = ttk.Style()
-        bg = self.theme['bg']
-        fg = self.theme['fg']
-
-        try:
-            r, g, b = int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16)
-            brightness = (r * 299 + g * 587 + b * 114) / 1000
-            is_dark_theme = brightness < 128
-        except (ValueError, IndexError):
-            is_dark_theme = False
-
-        style.configure('Vacation.TFrame', background=bg)
-        style.configure('Vacation.TLabelframe', background=bg, foreground=fg)
-        style.configure('Vacation.TLabelframe.Label', background=bg, foreground=fg)
-        style.configure('Vacation.TLabel', background=bg, foreground=fg)
-        style.configure('Vacation.TCombobox', fieldbackground='white', foreground='black')
-        style.configure('Vacation.TEntry', fieldbackground='white', foreground='black')
-
-        if is_dark_theme:
-            style.configure('Vacation.TButton', background=bg, foreground='#000000', borderwidth=1)
-            hover_bg = '#666666'
-            hover_fg = '#000000'
-        else:
-            style.configure('Vacation.TButton', background=bg, foreground=fg, borderwidth=1)
-            hover_bg = '#CCCCCC'
-            hover_fg = '#000000'
-
-        style.map(
-            'Vacation.TButton',
-            relief=[('pressed', 'sunken'), ('!pressed', 'raised')],
-            background=[('active', hover_bg), ('pressed', hover_bg)],
-            foreground=[('active', hover_fg), ('pressed', hover_fg)],
-        )
+        """套用共用主題化 ttk 樣式（以 ``Vacation.`` 為前綴）。"""
+        apply_themed_ttk_style('Vacation', self.theme)
 
     def _create_widgets(self) -> None:
         frame = ttk.Frame(self, padding="10", style='Vacation.TFrame')
