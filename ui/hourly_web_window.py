@@ -6,7 +6,7 @@ from tkinter import ttk
 from typing import Any
 
 from core.url_validator import is_safe_url
-from ui.theme_utils import apply_themed_ttk_style, themed_error
+from ui.theme_utils import apply_themed_ttk_style, compute_brightness, compute_separator_color, shift_color, themed_error
 
 
 class HourlyWebWindow(tk.Toplevel):
@@ -105,11 +105,43 @@ class HourlyWebWindow(tk.Toplevel):
         )
         self._rules_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._rules_listbox.bind('<Double-Button-1>', self._open_selected_rule_url)
+        self._rules_listbox.bind('<Button-3>', self._show_rules_context_menu)
         sb = ttk.Scrollbar(cols, orient=tk.VERTICAL, command=self._rules_listbox.yview)
         sb.pack(side=tk.LEFT, fill=tk.Y)
         self._rules_listbox.configure(yscrollcommand=sb.set)
+        self._apply_rules_listbox_theme()
+
+        self._rules_menu = tk.Menu(self, tearoff=0)
+        self._rules_menu.add_command(label="刪除此規則", command=self._remove_rule)
+        self._rules_menu.configure(
+            bg=self.theme.get('bg', '#F0F0F0'),
+            fg=self.theme.get('fg', '#000000'),
+            activebackground=shift_color(self.theme.get('bg', '#F0F0F0'), -20),
+            activeforeground=self.theme.get('fg', '#000000'),
+        )
+
         ttk.Button(list_frame, text="刪除選取", command=self._remove_rule,
                    style='HourlyWeb.TButton').pack(anchor='e', pady=(4, 0))
+
+    def _apply_rules_listbox_theme(self) -> None:
+        """讓規則清單在亮/暗主題下都維持可讀對比。"""
+        bg = self.theme.get('bg', '#F0F0F0')
+        fg = self.theme.get('fg', '#000000')
+        brightness = compute_brightness(bg)
+        is_dark = brightness is not None and brightness < 128
+        list_bg = shift_color(bg, 18 if is_dark else -6)
+        select_bg = shift_color(bg, 34 if is_dark else -28)
+        border = compute_separator_color(bg)
+
+        self._rules_listbox.configure(
+            bg=list_bg,
+            fg=fg,
+            selectbackground=select_bg,
+            selectforeground=fg,
+            highlightthickness=1,
+            highlightbackground=border,
+            highlightcolor=border,
+        )
 
     def _load_config(self) -> None:
         url_rules: list[dict] = self.current_config.get('url_rules', [])
@@ -156,6 +188,29 @@ class HourlyWebWindow(tk.Toplevel):
         rules = list(getattr(self, '_rules', []))
         del rules[sel[0]]
         self._refresh_listbox(rules)
+
+    def _show_rules_context_menu(self, event: tk.Event) -> None:
+        """在規則列上按右鍵顯示刪除選單。"""
+        if self._rules_listbox.size() == 0:
+            return
+
+        index = self._rules_listbox.nearest(event.y)
+        bbox = self._rules_listbox.bbox(index)
+        if not bbox:
+            return
+        item_top = bbox[1]
+        item_bottom = item_top + bbox[3]
+        if not (item_top <= event.y <= item_bottom):
+            return
+
+        self._rules_listbox.selection_clear(0, tk.END)
+        self._rules_listbox.selection_set(index)
+        self._rules_listbox.activate(index)
+
+        try:
+            self._rules_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._rules_menu.grab_release()
 
     def _open_selected_rule_url(self, _event: tk.Event) -> None:
         """雙擊規則清單時開啟該列 URL。"""

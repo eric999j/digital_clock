@@ -250,7 +250,11 @@ class DigitalClock(Observer):
         self._update_reminder_menu()
 
     def _on_hourly_web_updated(self, *args) -> None:
-        self.config = self.logic.get_config()
+        # 僅同步整點網頁與相關清單，避免覆蓋尚未 flush 的主題設定。
+        fresh = self.logic.get_config()
+        self.config['hourly_web_reminder'] = fresh.get('hourly_web_reminder', {})
+        self.config['reminders'] = fresh.get('reminders', [])
+        self.config['vacation_schedules'] = fresh.get('vacation_schedules', [])
         self._show_themed_info("整點網頁提醒設定已更新！")
 
     def _on_hourly_web_pause_toggled(self, is_paused: bool, *args) -> None:
