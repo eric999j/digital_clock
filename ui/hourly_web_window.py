@@ -6,7 +6,13 @@ from tkinter import ttk
 from typing import Any
 
 from core.url_validator import is_safe_url
-from ui.theme_utils import apply_themed_ttk_style, compute_brightness, compute_separator_color, shift_color, themed_error
+from ui.theme_utils import (
+    apply_themed_ttk_style,
+    compute_brightness,
+    compute_separator_color,
+    shift_color,
+    themed_error,
+)
 
 
 class HourlyWebWindow(tk.Toplevel):
