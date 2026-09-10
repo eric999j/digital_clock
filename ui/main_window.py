@@ -73,8 +73,13 @@ class DigitalClock(Observer):
             self.PERF_MONITOR_INTERVAL_SEC = 60
 
         self.font_var = tk.StringVar(value=app_conf['font_family'])
+        self.font_size_var = tk.IntVar(value=app_conf['font_size'])
         self.theme_var = tk.StringVar(value=app_conf['theme'])
         self.time_format_var = tk.StringVar(value=app_conf.get('time_format', '24h'))
+        self.date_format_var = tk.StringVar(value=app_conf.get('date_format', 'full'))
+        self.alpha_focused_var = tk.DoubleVar(value=self.config['window']['alpha_focused'])
+        self.alpha_unfocused_var = tk.DoubleVar(value=self.config['window']['alpha_unfocused'])
+        self.corner_radius_var = tk.IntVar(value=app_conf['corner_radius'])
         self.drag_offset: dict[str, int] = {'x': 0, 'y': 0}
         self.pomodoro_display_text: str = ""  # 用於顯示番茄鐘狀態的文字
         # 當滑鼠移至時間標籤上方時，暫停時間更新並顯示日期
@@ -726,9 +731,24 @@ class DigitalClock(Observer):
         # 重新繪製當前顯示的文字
         if self._current_display_text:
             self._draw_static_text(self._current_display_text)
-        fresh = self.logic.get_config()
-        fresh['appearance']['font_family'] = font_family
-        self.logic.schedule_save(fresh)
+        self._schedule_current_config_save()
+
+    def change_font_size(self, font_size: int) -> None:
+        """變更字型大小並立即重繪時鐘。"""
+        if font_size < 8:
+            return
+        self.config['appearance']['font_size'] = font_size
+        self._orig_font_size = font_size
+        self.font_size_var.set(font_size)
+        self._adjust_window_width()
+        try:
+            self._anim_font.configure(size=font_size)
+        except tk.TclError:
+            pass
+        self._hover_size_cache = {}
+        if self._current_display_text:
+            self._draw_static_text(self._current_display_text)
+        self._schedule_current_config_save()
 
     def change_time_format(self, time_format: str) -> None:
         """
@@ -741,9 +761,40 @@ class DigitalClock(Observer):
         self.time_format_var.set(time_format)
         self._adjust_window_width()  # 調整視窗寬度以適應新的時間格式
         self._update_display_time()  # 立即更新時間顯示
-        fresh = self.logic.get_config()
-        fresh['appearance']['time_format'] = time_format
-        self.logic.schedule_save(fresh)
+        self._schedule_current_config_save()
+
+    def change_date_format(self, date_format: str) -> None:
+        """變更游標停留時顯示的日期格式。"""
+        if date_format not in self.DATE_FORMATS:
+            return
+        self.config['appearance']['date_format'] = date_format
+        self.date_format_var.set(date_format)
+        self._schedule_current_config_save()
+
+    def change_window_alpha(self, is_focused: bool, alpha: float) -> None:
+        """變更指定焦點狀態下的視窗透明度。"""
+        normalized_alpha = min(1.0, max(0.1, float(alpha)))
+        key = 'alpha_focused' if is_focused else 'alpha_unfocused'
+        self.config['window'][key] = normalized_alpha
+        if is_focused:
+            self.alpha_focused_var.set(normalized_alpha)
+            self.root.attributes('-alpha', normalized_alpha)
+        else:
+            self.alpha_unfocused_var.set(normalized_alpha)
+        self._schedule_current_config_save()
+
+    def change_corner_radius(self, radius: int) -> None:
+        """變更時鐘背景的圓角半徑。"""
+        normalized_radius = max(0, int(radius))
+        self.CORNER_RADIUS = normalized_radius
+        self.config['appearance']['corner_radius'] = normalized_radius
+        self.corner_radius_var.set(normalized_radius)
+        self._redraw_background()
+        self._schedule_current_config_save()
+
+    def _schedule_current_config_save(self) -> None:
+        """以目前記憶體設定排程儲存，保留連續調整的所有變更。"""
+        self.logic.schedule_save(self.config)
 
     def apply_theme(self, theme_key: str, save: bool = True) -> None:
         """
@@ -792,9 +843,7 @@ class DigitalClock(Observer):
             self._update_menu_colors(self.context_menu)
 
             if save:
-                fresh = self.logic.get_config()
-                fresh['appearance']['theme'] = theme_key
-                self.logic.schedule_save(fresh)
+                self._schedule_current_config_save()
 
     def _start_drag(self, event: tk.Event) -> None:
         """
@@ -886,7 +935,9 @@ class DigitalClock(Observer):
         now = datetime.now()
         weekdays = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
         try:
-            return now.strftime(self.DATE_FORMATS['full']) + weekdays[now.weekday()]
+            date_format = self.config['appearance'].get('date_format', 'full')
+            date_text = now.strftime(self.DATE_FORMATS[date_format])
+            return date_text + (weekdays[now.weekday()] if date_format == 'full' else '')
         except Exception:
             return now.strftime(self.DATE_FORMATS['short'])
 

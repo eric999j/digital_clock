@@ -67,6 +67,18 @@ class ContextMenu(Menu):
         clock_settings_menu.add_cascade(label="字型選擇", menu=font_menu)
         clock_settings_menu.add_separator()
 
+        # 字型大小
+        font_size_menu = Menu(clock_settings_menu, tearoff=0)
+        for size in (32, 40, 48, 56, 64, 72):
+            font_size_menu.add_radiobutton(
+                label=f"{size} px",
+                variable=self.ui.font_size_var,
+                value=size,
+                command=lambda selected_size=size: self.ui.change_font_size(selected_size),
+            )
+        clock_settings_menu.add_cascade(label="字型大小", menu=font_size_menu)
+        clock_settings_menu.add_separator()
+
         # 配色
         theme_menu = Menu(clock_settings_menu, tearoff=0)
         for key, theme in self.ui.config['themes'].items():
@@ -82,5 +94,57 @@ class ContextMenu(Menu):
         time_format_menu.add_radiobutton(label="12小時制", variable=self.ui.time_format_var, value="12h",
                                          command=lambda: self.ui.change_time_format("12h"))
         clock_settings_menu.add_cascade(label="時間格式", menu=time_format_menu)
+        clock_settings_menu.add_separator()
+
+        # 日期格式
+        date_format_menu = Menu(clock_settings_menu, tearoff=0)
+        date_format_menu.add_radiobutton(
+            label="完整日期",
+            variable=self.ui.date_format_var,
+            value="full",
+            command=lambda: self.ui.change_date_format("full"),
+        )
+        date_format_menu.add_radiobutton(
+            label="簡短日期",
+            variable=self.ui.date_format_var,
+            value="short",
+            command=lambda: self.ui.change_date_format("short"),
+        )
+        clock_settings_menu.add_cascade(label="日期格式", menu=date_format_menu)
+        clock_settings_menu.add_separator()
+
+        # 透明度
+        focused_alpha_menu = Menu(clock_settings_menu, tearoff=0)
+        unfocused_alpha_menu = Menu(clock_settings_menu, tearoff=0)
+        for percent in (100, 90, 80, 70, 60):
+            alpha = percent / 100
+            focused_alpha_menu.add_radiobutton(
+                label=f"{percent}%",
+                variable=self.ui.alpha_focused_var,
+                value=alpha,
+                command=lambda selected_alpha=alpha: self.ui.change_window_alpha(True, selected_alpha),
+            )
+            unfocused_alpha_menu.add_radiobutton(
+                label=f"{percent}%",
+                variable=self.ui.alpha_unfocused_var,
+                value=alpha,
+                command=lambda selected_alpha=alpha: self.ui.change_window_alpha(False, selected_alpha),
+            )
+        transparency_menu = Menu(clock_settings_menu, tearoff=0)
+        transparency_menu.add_cascade(label="聚焦時", menu=focused_alpha_menu)
+        transparency_menu.add_cascade(label="未聚焦時", menu=unfocused_alpha_menu)
+        clock_settings_menu.add_cascade(label="透明度", menu=transparency_menu)
+        clock_settings_menu.add_separator()
+
+        # 圓角
+        corner_radius_menu = Menu(clock_settings_menu, tearoff=0)
+        for radius in (0, 12, 20, 30, 40):
+            corner_radius_menu.add_radiobutton(
+                label=f"{radius} px",
+                variable=self.ui.corner_radius_var,
+                value=radius,
+                command=lambda selected_radius=radius: self.ui.change_corner_radius(selected_radius),
+            )
+        clock_settings_menu.add_cascade(label="圓角", menu=corner_radius_menu)
 
         self.add_cascade(label="時鐘設定", menu=clock_settings_menu)
