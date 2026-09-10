@@ -106,6 +106,39 @@ class VacationScheduleService:
                 self.notify(Events.VACATION_SCHEDULE_DELETED, removed)
                 return
 
+    def update_schedule(
+        self,
+        schedule_to_update: dict[str, Any],
+        start: str | date,
+        end: str | date,
+        note: str = "",
+    ) -> dict[str, Any]:
+        """更新第一筆符合的休假排程，並保留其自動啟動狀態。"""
+        start_str = self._to_iso(start)
+        end_str = self._to_iso(end)
+        if start_str is None or end_str is None:
+            raise ValueError("日期格式無效")
+        if end_str < start_str:
+            raise ValueError("結束日期不可早於開始日期")
+
+        config = self.config
+        schedules = config.get('vacation_schedules', [])
+        for existing in schedules:
+            if not self._matches(existing, schedule_to_update):
+                continue
+
+            existing.update({
+                'start': start_str,
+                'end': end_str,
+                'note': (note or "").strip(),
+            })
+            schedules.sort(key=lambda item: (item.get('start', ''), item.get('end', '')))
+            self.config_manager.save_config(config)
+            self.notify(Events.VACATION_SCHEDULE_UPDATED, existing)
+            return existing
+
+        raise ValueError("找不到要更新的休假排程")
+
     def check(
         self,
         now: datetime | None = None,

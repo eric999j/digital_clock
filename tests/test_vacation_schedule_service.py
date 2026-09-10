@@ -75,6 +75,41 @@ class TestVacationScheduleService(unittest.TestCase):
         self.mock_config_mgr.save_config.assert_not_called()
         self.mock_notify.assert_not_called()
 
+    # --- update_schedule ---
+
+    def test_update_schedule_persists_changes_and_preserves_auto_started(self) -> None:
+        schedule = {
+            'start': '2026-07-10',
+            'end': '2026-07-15',
+            'note': '暑假',
+            'auto_started': True,
+        }
+        config: dict = {'vacation_schedules': [schedule]}
+        self.mock_config_mgr.load_config.return_value = config
+
+        result = self.service.update_schedule(
+            schedule, '2026-07-11', '2026-07-11', '單日休假'
+        )
+
+        self.assertEqual(result['start'], '2026-07-11')
+        self.assertEqual(result['end'], '2026-07-11')
+        self.assertEqual(result['note'], '單日休假')
+        self.assertTrue(result['auto_started'])
+        self.mock_config_mgr.save_config.assert_called_once_with(config)
+        self.mock_notify.assert_called_once_with(
+            Events.VACATION_SCHEDULE_UPDATED, result
+        )
+
+    def test_update_schedule_rejects_missing_schedule(self) -> None:
+        self.mock_config_mgr.load_config.return_value = {'vacation_schedules': []}
+
+        with self.assertRaisesRegex(ValueError, "找不到要更新"):
+            self.service.update_schedule(
+                {'start': '2026-07-10', 'end': '2026-07-10', 'note': ''},
+                '2026-07-11', '2026-07-11'
+            )
+        self.mock_config_mgr.save_config.assert_not_called()
+
     # --- check: 快速跳出 ---
 
     def test_check_returns_when_snapshot_has_no_schedules(self) -> None:

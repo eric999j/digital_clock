@@ -3,6 +3,7 @@ import tkinter as tk
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from tkinter import ttk
+from typing import Any
 
 from ui.theme_utils import apply_themed_ttk_style, themed_error
 
@@ -15,7 +16,9 @@ class VacationScheduleWindow(tk.Toplevel):
         parent: tk.Tk,
         callback: Callable[[str, str, str], None],
         theme: dict[str, str] | None = None,
-        geometry: str = "360x260",
+        geometry: str = "360x290",
+        schedule_to_edit: dict[str, Any] | None = None,
+        update_callback: Callable[[dict[str, Any], str, str, str], None] | None = None,
     ) -> None:
         """
         初始化休假排程視窗。
@@ -25,12 +28,16 @@ class VacationScheduleWindow(tk.Toplevel):
             callback: 新增排程的回調函數 `(start_iso, end_iso, note)`
             theme: 主題配色
             geometry: 視窗幾何設定
+            schedule_to_edit: 要編輯的既有排程；未提供時為新增模式
+            update_callback: 更新排程的回調函數
         """
         super().__init__(parent)
         self.callback = callback
+        self.schedule_to_edit = schedule_to_edit
+        self.update_callback = update_callback
         self.theme = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
         self.transient(parent)
-        self.title("新增休假排程")
+        self.title("編輯休假排程" if schedule_to_edit else "新增休假排程")
         self.geometry(geometry)
         self.resizable(False, False)
         # 不使用 grab_set，讓主時鐘仍可接收拖曳事件
@@ -93,6 +100,11 @@ class VacationScheduleWindow(tk.Toplevel):
             self.end_day_var,
             row_attr='end',
         )
+        ttk.Label(
+            frame,
+            text="單日休假：開始與結束日期設為同一天（例如 9/11 ~ 9/11）。",
+            style='Vacation.TLabel',
+        ).pack(anchor=tk.W, pady=(0, 5))
 
         # 備註
         note_frame = ttk.LabelFrame(frame, text="備註（選填）", padding="5", style='Vacation.TLabelframe')
@@ -104,7 +116,8 @@ class VacationScheduleWindow(tk.Toplevel):
         btn_frame = ttk.Frame(frame, style='Vacation.TFrame')
         btn_frame.pack(fill=tk.X, pady=(10, 0))
 
-        ttk.Button(btn_frame, text="新增", command=self._on_submit, style='Vacation.TButton').pack(side=tk.RIGHT, padx=5)
+        submit_label = "儲存" if self.schedule_to_edit else "新增"
+        ttk.Button(btn_frame, text=submit_label, command=self._on_submit, style='Vacation.TButton').pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="取消", command=self.destroy, style='Vacation.TButton').pack(side=tk.RIGHT)
 
     def _add_date_row(
@@ -145,6 +158,21 @@ class VacationScheduleWindow(tk.Toplevel):
         for cb_attr in ('start_day_cb', 'end_day_cb'):
             getattr(self, cb_attr)['values'] = days
 
+        if self.schedule_to_edit:
+            self._set_date_vars('start')
+            self._set_date_vars('end')
+            self.note_entry.insert(0, str(self.schedule_to_edit.get('note', '')).strip())
+
+    def _set_date_vars(self, prefix: str) -> None:
+        """以既有排程日期預填指定日期欄位。"""
+        try:
+            selected = date.fromisoformat(str(self.schedule_to_edit[prefix]))
+        except (KeyError, TypeError, ValueError):
+            return
+        getattr(self, f'{prefix}_year_var').set(str(selected.year))
+        getattr(self, f'{prefix}_month_var').set(f"{selected.month:02d}")
+        getattr(self, f'{prefix}_day_var').set(f"{selected.day:02d}")
+
     def _on_submit(self) -> None:
         """驗證輸入並回呼。"""
         try:
@@ -176,7 +204,12 @@ class VacationScheduleWindow(tk.Toplevel):
         note = self.note_entry.get().strip()
 
         try:
-            self.callback(start.isoformat(), end.isoformat(), note)
+            if self.schedule_to_edit:
+                if self.update_callback is None:
+                    raise ValueError("無法更新休假排程")
+                self.update_callback(self.schedule_to_edit, start.isoformat(), end.isoformat(), note)
+            else:
+                self.callback(start.isoformat(), end.isoformat(), note)
         except ValueError as e:
             self._show_error(str(e))
             return

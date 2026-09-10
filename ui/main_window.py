@@ -323,18 +323,32 @@ class DigitalClock(Observer):
 
         self.root.after_idle(open_window)
 
-    def _on_open_vacation_schedule_window(self, *args) -> None:
-        """開啟新增休假排程視窗。"""
+    def _on_open_vacation_schedule_window(
+        self, schedule_to_edit: dict[str, Any] | None = None, *args
+    ) -> None:
+        """開啟新增或編輯休假排程視窗。"""
         from ui.vacation_schedule_window import VacationScheduleWindow
 
         def open_window() -> None:
             try:
                 theme = self._get_current_theme()
-                VacationScheduleWindow(self.root, self.logic.add_vacation_schedule, theme)
+                VacationScheduleWindow(
+                    self.root,
+                    self.logic.add_vacation_schedule,
+                    theme,
+                    schedule_to_edit=schedule_to_edit,
+                    update_callback=self.logic.update_vacation_schedule,
+                )
             except Exception as e:
                 logger.error("Error opening vacation schedule window: %s", e)
 
         self.root.after_idle(open_window)
+
+    def _open_vacation_schedule_editor(self, schedule: dict[str, Any]) -> None:
+        """排程選單關閉後開啟編輯視窗。"""
+        self.root.after_idle(
+            lambda: self._on_open_vacation_schedule_window(schedule)
+        )
 
     def _setup_window(self) -> None:
         """初始化視窗屬性、大小與位置。"""

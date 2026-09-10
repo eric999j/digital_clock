@@ -267,6 +267,12 @@ class ClockLogic:
         """刪除休假排程。"""
         self.vacation_schedule_service.delete_schedule(schedule)
 
+    def update_vacation_schedule(
+        self, schedule: dict[str, Any], start: str, end: str, note: str = ""
+    ) -> None:
+        """更新休假排程。"""
+        self.vacation_schedule_service.update_schedule(schedule, start, end, note)
+
     def list_vacation_schedules(self) -> list[dict[str, Any]]:
         """列出所有休假排程。"""
         return self.vacation_schedule_service.list_schedules()

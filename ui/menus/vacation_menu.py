@@ -68,9 +68,13 @@ class VacationMenu(Menu):
             self.add_cascade(label=_truncate(self._format_label(schedule)), menu=self._build_item_menu(schedule))
 
     def _build_item_menu(self, schedule: dict[str, Any]) -> Menu:
-        """建立單筆排程的子選單（刪除操作）。"""
+        """建立單筆排程的子選單。"""
         item_menu = Menu(self, tearoff=0)
         self.ui._update_menu_colors(item_menu)
+        item_menu.add_command(
+            label="編輯",
+            command=lambda s=schedule: self.ui._open_vacation_schedule_editor(s),
+        )
         item_menu.add_command(
             label="刪除",
             command=lambda s=schedule: self.ui._confirm_delete_vacation_schedule(s),
