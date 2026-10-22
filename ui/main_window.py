@@ -14,9 +14,11 @@ logger = logging.getLogger(__name__)
 from core.clock_logic import ClockLogic
 from core.events import Events
 from core.observer import Observer
+from services.countdown_service import CountdownService
 from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
+from ui.window_bounds import clamp_position, get_screen_bounds
 
 if TYPE_CHECKING:
     from core.container import ServiceContainer
@@ -93,6 +95,13 @@ class DigitalClock(Observer):
         self._reminder_popups: list[tk.Toplevel] = []
         self._last_logic_tick: datetime | None = None
 
+        # --- 時鐘下方資訊列（倒數計時、多時區）---
+        self._info_lines: list[str] = []
+        self._info_items: list[int] = []
+        self._info_font: tkfont.Font | None = None
+        self._info_font_size: int = 9
+        self._info_line_px: int = 14
+        self._base_height: int = self.config['window']['height']
         # --- 性能優化緩存 ---
         self._canvas_items: list[dict[str, Any]] = []  # 存儲 Canvas ID 與狀態: [{'main': id, 'sub': id, 'char': 'x'}]
         self._last_render_state: dict[str, Any] = {} # 記錄上次渲染的參數以減少不必要的更新
@@ -138,6 +147,14 @@ class DigitalClock(Observer):
             Events.POMODORO_TICK: self._on_pomodoro_tick,
             Events.POMODORO_PHASE_COMPLETE: self._on_pomodoro_phase_complete,
             Events.REMINDER_DUE: self._on_reminder_due,
+            Events.REMINDER_SNOOZED: self._on_reminder_snoozed,
+            Events.COUNTDOWN_STARTED: self._on_countdown_changed,
+            Events.COUNTDOWN_TICK: self._on_countdown_changed,
+            Events.COUNTDOWN_PAUSE_TOGGLED: self._on_countdown_changed,
+            Events.COUNTDOWN_CANCELLED: self._on_countdown_changed,
+            Events.COUNTDOWN_FINISHED: self._on_countdown_finished,
+            Events.TIMEZONES_UPDATED: self._on_timezones_updated,
+            Events.OPEN_COUNTDOWN_WINDOW: self._on_open_countdown_window,
             Events.REMINDER_ADDED: self._on_reminder_added,
             Events.REMINDER_UPDATED: self._on_reminder_updated,
             Events.REMINDER_DELETED: self._on_reminder_deleted,
@@ -192,7 +209,11 @@ class DigitalClock(Observer):
         display_text = reminder.get('message') or reminder.get('title', '') or '提醒時間到了'
         reminder_title = reminder.get('title') or '提醒'
         theme = self._get_current_theme()
-        popup = show_reminder_popup_window(self.root, display_text, theme, title=reminder_title)
+        popup = show_reminder_popup_window(
+            self.root, display_text, theme, title=reminder_title,
+            snooze_minutes=self.logic.get_snooze_options(),
+            on_snooze=lambda minutes, r=reminder: self.logic.snooze_reminder(r, minutes),
+        )
         if popup is not None:
             self._reminder_popups.append(popup)
             popup.bind('<Destroy>', lambda event, window=popup: self._forget_reminder_popup(window), add='+')
@@ -206,6 +227,49 @@ class DigitalClock(Observer):
         """從目前的提醒視窗清單移除已關閉的視窗。"""
         if popup in self._reminder_popups:
             self._reminder_popups.remove(popup)
+
+    def _on_reminder_snoozed(self, *args) -> None:
+        """稍後提醒會新增一筆單次提醒：同步記憶體中的提醒清單並刷新選單。"""
+        # 只同步提醒清單，避免覆蓋尚未 flush 的主題設定
+        self.config['reminders'] = self.logic.get_config().get('reminders', [])
+        self._update_reminder_menu()
+
+    def _on_countdown_changed(self, *args) -> None:
+        """倒數開始、跳秒、暫停或取消時刷新時鐘下方資訊列。"""
+        self._refresh_info_lines()
+
+    def _on_countdown_finished(self, label: str = "", total_seconds: int = 0, *args) -> None:
+        """倒數結束：刷新資訊列、響鈴並彈出提醒視窗。"""
+        from ui.popup_utils import show_reminder_popup_window
+
+        self._refresh_info_lines()
+        try:
+            self.root.bell()
+        except tk.TclError:
+            logger.debug("Bell is not available")
+        name = f"「{label}」" if label else ""
+        duration = CountdownService.format_remaining(total_seconds)
+        theme = self._get_current_theme()
+        self.root.after_idle(lambda: show_reminder_popup_window(
+            self.root, f"{name}倒數 {duration} 結束了", theme, title="倒數計時", ok_text="確定"
+        ))
+
+    def _on_timezones_updated(self, *args) -> None:
+        """多時區選擇改變：只同步該區塊設定（避免覆蓋未儲存的主題），並刷新資訊列。"""
+        self.config['timezones'] = self.logic.get_config().get('timezones', {})
+        self._refresh_info_lines()
+
+    def _on_open_countdown_window(self, *args) -> None:
+        """開啟自訂倒數視窗。"""
+        from ui.countdown_window import CountdownWindow
+
+        def open_window() -> None:
+            try:
+                CountdownWindow(self.root, self.logic.start_countdown, self._get_current_theme())
+            except Exception as e:
+                logger.error("Error opening countdown window: %s", e)
+
+        self.root.after_idle(open_window)
 
     def _on_screenshot_triggered(self, *args: Any) -> None:
         """截圖時暫時隱藏時鐘，並在設定時間後恢復。"""
@@ -386,9 +450,30 @@ class DigitalClock(Observer):
         x, y = win_conf['x'], win_conf['y']
         if x is None:  # 首次啟動時置中
             x = (self.root.winfo_screenwidth() - win_conf['width']) // 2
+        # 螢幕解析度或配置改變後，已儲存的位置可能落在可視範圍外
+        x, y = self._clamp_window_position(x, y, win_conf['width'], win_conf['height'])
 
         self.root.geometry(f"{win_conf['width']}x{win_conf['height']}+{x}+{y}")
         self.root.attributes('-alpha', win_conf['alpha_focused'])
+
+    def _clamp_window_position(self, x: int, y: int, width: int, height: int) -> tuple[int, int]:
+        """將視窗位置限制在可視螢幕範圍內，避免時鐘被拖出或移到螢幕外。"""
+        return clamp_position(x, y, width, height, get_screen_bounds(self.root))
+
+    def _apply_window_size(self, width: int, height: int) -> None:
+        """
+        變更視窗大小並保持在可視範圍內。
+
+        字型放大、資訊列增高時，靠近螢幕邊緣的視窗可能超出可視範圍，
+        此時會自動內移並同步儲存新位置。
+        """
+        old_x, old_y = self.root.winfo_x(), self.root.winfo_y()
+        x, y = self._clamp_window_position(old_x, old_y, width, height)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        if (x, y) != (old_x, old_y):
+            self.config['window']['x'] = x
+            self.config['window']['y'] = y
+            self.logic.schedule_window_position_save(x, y)
 
     def _setup_label(self) -> None:
         """初始化時鐘標籤與圓角背景。"""
@@ -445,9 +530,9 @@ class DigitalClock(Observer):
         # 週期提醒 (插入在整點網頁之前)
         self.reminder_menu = ReminderMenu(self.context_menu, self)
         self._update_menu_colors(self.reminder_menu)
-        # 插入位置計算: Vacation(0), Sep(1), Pomodoro(2), Sep(3) -> Insert at 4
-        self.context_menu.insert_cascade(4, label="提醒", menu=self.reminder_menu)
-        self.context_menu.insert_separator(5)
+        insert_at = self.context_menu.reminder_insert_index
+        self.context_menu.insert_cascade(insert_at, label="提醒", menu=self.reminder_menu)
+        self.context_menu.insert_separator(insert_at + 1)
 
     def _update_reminder_menu(self) -> None:
         """更新提醒選單的內容。"""
@@ -595,7 +680,8 @@ class DigitalClock(Observer):
         try:
             self._update_reminder_menu()
             self._update_vacation_menu()
-            # self._update_pomodoro_menu_label() # 已移除，改為即時更新子選單
+            self.context_menu.countdown_menu.update_menu()
+            self.context_menu.timezone_menu.update_menu()
             self.context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
             logger.error("Error showing context menu: %s", e)
@@ -650,12 +736,16 @@ class DigitalClock(Observer):
             # 若 metrics 失敗，使用舊方法或不變動
             new_height = self.config['window']['height']
 
+        self._base_height = new_height
+        self._update_info_font()
+
         # 清除渲染緩存，確保重新佈局
         if hasattr(self, '_last_render_state'):
             self._last_render_state.clear()
 
         if not is_initial:
-            self.root.geometry(f"{new_width}x{new_height}+{self.root.winfo_x()}+{self.root.winfo_y()}")
+            self._apply_window_size(new_width, new_height + self._info_band_height())
+            self._render_info_band()
 
     def _on_resize(self, event: tk.Event | None = None) -> None:
         """
@@ -812,6 +902,7 @@ class DigitalClock(Observer):
             # 清除舊的背景並繪製新的
             self.canvas.delete("all")
             self._canvas_items.clear()  # 清除文字項目引用，強制重新建立
+            self._info_items.clear()
             self._last_render_state.clear()
             self._background_item = None
 
@@ -837,6 +928,7 @@ class DigitalClock(Observer):
             # 重新繪製當前顯示的文字
             if self._current_display_text:
                 self._draw_static_text(self._current_display_text)
+            self._render_info_band()
 
             # 更新所有菜單的配色 (遞歸)。切換主題後強制失效快取
             self._menu_color_cache_key = None
@@ -950,6 +1042,7 @@ class DigitalClock(Observer):
         """
         x = self.root.winfo_x() + event.x - self.drag_offset['x']
         y = self.root.winfo_y() + event.y - self.drag_offset['y']
+        x, y = self._clamp_window_position(x, y, self.root.winfo_width(), self.root.winfo_height())
         self.root.geometry(f'+{x}+{y}')
         # 同步最新視窗位置到 config，再排程儲存
         self.config['window']['x'] = x
@@ -1054,7 +1147,8 @@ class DigitalClock(Observer):
 
         # 3. 佈局計算 (只有在關鍵參數變動時執行)
         win_w = self.root.winfo_width()
-        curr_state_key = f"{text_len}_{font_family}_{font_size}_{win_w}"
+        info_band_h = self._info_band_height()
+        curr_state_key = f"{text_len}_{font_family}_{font_size}_{win_w}_{self.root.winfo_height()}_{info_band_h}"
         layout_changed = self._last_render_state.get('layout_key') != curr_state_key
         if layout_changed:
             try:
@@ -1064,7 +1158,8 @@ class DigitalClock(Observer):
 
             total_width = self._anim_font.measure(text1)
             start_x = (self.canvas.winfo_width() - total_width) / 2
-            center_y = self.canvas.winfo_height() / 2
+            # 資訊列佔用視窗底部，時間文字固定在其上方的基準高度內置中
+            center_y = self._base_height / 2
             line_height = font_size * 1.1
 
             self._render_params = {
@@ -1113,7 +1208,7 @@ class DigitalClock(Observer):
                     item['last_sub_char'] = char2
             else:
                 # 靜態狀態
-                if self._last_render_state.get(f'static_{i}') != char1 or was_animating:
+                if layout_changed or self._last_render_state.get(f'static_{i}') != char1 or was_animating:
                     self.canvas.coords(item['main'], cx, params['center_y'])
                     self.canvas.itemconfig(item['main'], text=char1, fill=fg_color, font=params['font'], state='normal')
                     self.canvas.itemconfig(item['sub'], state='hidden')
@@ -1219,6 +1314,108 @@ class DigitalClock(Observer):
         """為了相容性保留 (不再主動由外部調用)。"""
         pass
 
+    # --- 時鐘下方資訊列（倒數計時、多時區）---
+
+    INFO_BAND_PADDING = 6
+
+    def _update_info_font(self) -> None:
+        """依目前字型與大小更新資訊列字型與行高（字體約為時鐘的 1/4）。"""
+        family = self.config['appearance']['font_family']
+        self._info_font_size = max(9, self.config['appearance']['font_size'] // 4)
+        if self._info_font is None:
+            self._info_font = tkfont.Font(root=self.root, family=family, size=self._info_font_size)
+        else:
+            try:
+                self._info_font.configure(family=family, size=self._info_font_size)
+            except tk.TclError as e:
+                logger.debug("Info font configure failed: %s", e)
+        self._info_line_px = self._info_font.metrics('linespace') + 2
+
+    def _info_band_height(self) -> int:
+        """資訊列所需高度；沒有任何資訊時為 0，視窗維持原本大小。"""
+        if not self._info_lines:
+            return 0
+        return len(self._info_lines) * self._info_line_px + self.INFO_BAND_PADDING
+
+    def _compose_info_lines(self, now: datetime | None = None) -> list[str]:
+        """組合資訊列文字：倒數計時（若有）在前，接著是各已選時區。"""
+        lines: list[str] = []
+        countdown = self.logic.countdown_service
+        if countdown.is_active:
+            name = f"{countdown.label} " if countdown.label else ""
+            remaining = CountdownService.format_remaining(countdown.remaining_seconds())
+            paused = " (暫停)" if countdown.is_paused else ""
+            lines.append(f"{name}倒數 {remaining}{paused}")
+
+        time_format = self.config['appearance'].get('time_format', '24h')
+        for zone in self.logic.get_zone_times(now):
+            day_hint = {1: " (+1)", -1: " (-1)"}.get(zone.day_offset, "")
+            lines.append(f"{zone.label} {self._format_time_str(zone.local_time, time_format)}{day_hint}")
+        return lines
+
+    def _refresh_info_lines(self, now: datetime | None = None) -> None:
+        """重新計算資訊列內容並在有變化時更新畫面。"""
+        try:
+            self._set_info_lines(self._compose_info_lines(now))
+        except Exception as e:
+            logger.warning("Error refreshing info lines: %s", e)
+
+    def _set_info_lines(self, lines: list[str]) -> None:
+        """
+        設定資訊列；行數改變時調整視窗高度，否則只更新文字。
+
+        Args:
+            lines: 要顯示的文字行（空清單代表隱藏資訊列）
+        """
+        if lines == self._info_lines:
+            return
+
+        old_band_height = self._info_band_height()
+        self._info_lines = list(lines)
+        if self._info_band_height() != old_band_height:
+            self._apply_window_size(
+                self.config['window']['width'],
+                self._base_height + self._info_band_height(),
+            )
+            self.root.update_idletasks()
+            self._last_render_state.clear()
+            self._redraw_background()
+            self._update_display_time()
+        self._render_info_band()
+
+    def _render_info_band(self) -> None:
+        """在時鐘文字下方繪製資訊列；文字過寬時自動縮小字級以符合視窗寬度。"""
+        if self._info_font is None:
+            return
+        for item in self._info_items[len(self._info_lines):]:
+            self.canvas.delete(item)
+        del self._info_items[len(self._info_lines):]
+        if not self._info_lines:
+            return
+
+        theme = self._get_current_theme()
+        fg_color = theme['fg'] if theme else 'white'
+        width = self.config['window']['width']
+
+        size = self._info_font_size
+        self._info_font.configure(size=size)
+        available = max(10, width - 16)
+        while size > 8 and max(self._info_font.measure(line) for line in self._info_lines) > available:
+            size -= 1
+            self._info_font.configure(size=size)
+
+        top = self._base_height - 2
+        for i, line in enumerate(self._info_lines):
+            y = top + i * self._info_line_px + self._info_line_px / 2
+            if i < len(self._info_items):
+                item = self._info_items[i]
+                self.canvas.coords(item, width / 2, y)
+                self.canvas.itemconfig(item, text=line, fill=fg_color, font=self._info_font)
+            else:
+                self._info_items.append(self.canvas.create_text(
+                    width / 2, y, text=line, fill=fg_color, font=self._info_font, anchor='center',
+                ))
+
     def _set_display_text_direct(self, text: str) -> None:
         """
         直接設定顯示文字，不使用動畫（用於 hover 日期顯示等）。
@@ -1250,6 +1447,9 @@ class DigitalClock(Observer):
             self.logic.check_reminders(now)
             # 番茄鐘每秒 tick
             self.logic.pomodoro.tick()
+            # 倒數計時每秒 tick，資訊列（倒數、各時區時間）同步刷新
+            self.logic.countdown_service.tick()
+            self._refresh_info_lines(now)
             if self.PERF_MONITOR_ENABLED:
                 logic_ms = (time.perf_counter() - logic_start) * 1000.0
 

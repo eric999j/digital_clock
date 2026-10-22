@@ -127,6 +127,9 @@ class ConfigManager:
                 "short_break": 5,
                 "long_break": 15,
                 "cycles_before_long_break": 4
+            },
+            "timezones": {
+                "selected": []  # 要顯示於時鐘下方的 IANA 時區代碼（最多 3 個）
             }
         }
         self._config_cache: dict[str, Any] | None = None

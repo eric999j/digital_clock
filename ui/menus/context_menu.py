@@ -2,6 +2,9 @@ import tkinter.font as tkfont
 from tkinter import Menu
 from typing import TYPE_CHECKING
 
+from ui.menus.countdown_menu import CountdownMenu
+from ui.menus.timezone_menu import TimezoneMenu
+
 if TYPE_CHECKING:
     # 避免循環引用，只在型別檢查時匯入
     from ..main_window import DigitalClock
@@ -26,17 +29,10 @@ class ContextMenu(Menu):
         self._vacation_placeholder = placeholder
         self.add_separator()
 
-        # 番茄鐘
-        self.pomodoro_menu = Menu(self, tearoff=0)
-        self.pomodoro_menu.add_command(label="狀態: [就緒]", state="normal")
-        self.pomodoro_menu.add_separator()
-        self.pomodoro_menu.add_command(label="開始專注", command=lambda: self.logic.pomodoro.start_focus())
-        self.pomodoro_menu.add_command(label="停止", command=lambda: self.logic.pomodoro.stop())
-        self.add_cascade(label="番茄鐘", menu=self.pomodoro_menu)
-
         # 週期提醒 (由 ReminderMenu 處理，這裡預留或由外部掛載)
         # 為了架構清晰，我們這裡還是保留結構，但在 main_window 中組合
-        self.add_separator()
+        # 提醒選單由 main_window 插入至此位置，避免依賴硬編碼索引
+        self.reminder_insert_index: int = self.index('end') + 1
         # self.add_cascade(label="週期提醒", menu=reminder_menu) # Will be added by main window
 
         # 整點網頁
@@ -45,6 +41,20 @@ class ContextMenu(Menu):
         pause_label = "啟動" if self.logic.is_hourly_web_paused() else "暫停"
         self.hourly_web_menu.add_command(label=pause_label, command=self.logic.toggle_hourly_web_pause)
         self.add_cascade(label="整點網頁", menu=self.hourly_web_menu)
+        self.add_separator()
+
+        # 倒數計時
+        self.countdown_menu = CountdownMenu(self, self.ui)
+        self.add_cascade(label="倒數計時", menu=self.countdown_menu)
+        self.add_separator()
+
+        # 番茄鐘
+        self.pomodoro_menu = Menu(self, tearoff=0)
+        self.pomodoro_menu.add_command(label="狀態: [就緒]", state="normal")
+        self.pomodoro_menu.add_separator()
+        self.pomodoro_menu.add_command(label="開始專注", command=lambda: self.logic.pomodoro.start_focus())
+        self.pomodoro_menu.add_command(label="停止", command=lambda: self.logic.pomodoro.stop())
+        self.add_cascade(label="番茄鐘", menu=self.pomodoro_menu)
         self.add_separator()
 
         # 時鐘設定
@@ -56,6 +66,12 @@ class ContextMenu(Menu):
     def _add_clock_settings_menu(self) -> None:
         """新增時鐘設定選單。"""
         clock_settings_menu = Menu(self, tearoff=0)
+
+        # 多時區（第一項；內容隨選擇狀態變化，開啟右鍵選單時由 DigitalClock 刷新）
+        self.timezone_menu = TimezoneMenu(clock_settings_menu, self.ui)
+        clock_settings_menu.add_cascade(label="多時區", menu=self.timezone_menu)
+        clock_settings_menu.add_separator()
+
 
         # 字型
         font_menu = Menu(clock_settings_menu, tearoff=0)

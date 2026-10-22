@@ -1,1 +1,2 @@
 pynput>=1.8.1
+tzdata>=2024.1; sys_platform == "win32"

@@ -35,7 +35,7 @@ if errorlevel 1 (
 )
 
 echo [4/4] Building release binary...
-"%VENV_PY%" -m PyInstaller --noconfirm --clean --windowed --onefile --name DigitalClock --collect-all pynput main.py
+"%VENV_PY%" -m PyInstaller --noconfirm --clean --windowed --onefile --name DigitalClock --collect-all pynput --collect-data tzdata main.py
 if errorlevel 1 (
     echo ERROR: Build failed.
     pause

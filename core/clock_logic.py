@@ -8,11 +8,13 @@ logger = logging.getLogger(__name__)
 from core.events import Events
 from core.observer import Observer
 from services.config_service import ConfigManager
+from services.countdown_service import CountdownService
 from services.hourly_web_service import HourlyWebService
 from services.keyboard_service import KeyboardService
 from services.pause_manager import PauseManager
 from services.pomodoro_service import PomodoroService
 from services.reminder_service import ReminderService
+from services.timezone_service import TimezoneService, ZoneTime
 from services.vacation_schedule_service import VacationScheduleService
 
 if TYPE_CHECKING:
@@ -42,7 +44,8 @@ class ClockLogic:
         self.reminder_service = ReminderService(config_manager, self.notify_observers)
         self.hourly_service = HourlyWebService(config_manager, self.notify_observers)
         self.pause_manager = PauseManager(config_manager, self.notify_observers)
-
+        self.countdown_service = CountdownService(self.notify_observers)
+        self.timezone_service = TimezoneService(config_manager, self.notify_observers)
         # 鍵盤服務
         self.keyboard_service = KeyboardService(config_manager, self._on_screenshot_triggered)
 
@@ -145,14 +148,26 @@ class ClockLogic:
             self._pending_config['window']['y'] = y
         self._schedule_pending_save()
 
+    def _scheduler(self) -> Any:
+        """
+        取得提供 ``after`` / ``after_cancel`` 的排程物件。
+
+        UI 控制器（DigitalClock）本身並非 Tk 視窗，排程方法在其 ``root`` 上；
+        測試用 stub 則直接提供這兩個方法。
+        """
+        if hasattr(self.ui, 'after'):
+            return self.ui
+        return getattr(self.ui, 'root', self.ui)
+
     def _schedule_pending_save(self) -> None:
         """重新安排延遲儲存 callback。"""
+        scheduler = self._scheduler()
         if self._save_after_id is not None:
             try:
-                self.ui.after_cancel(self._save_after_id)
+                scheduler.after_cancel(self._save_after_id)
             except Exception as e:
                 logger.debug("Cancel scheduled config save failed: %s", e)
-        self._save_after_id = self.ui.after(self._save_delay_ms, self._do_save)
+        self._save_after_id = scheduler.after(self._save_delay_ms, self._do_save)
 
     def _do_save(self) -> None:
         """執行實際的儲存動作（由 schedule_save 排程呼叫）。"""
@@ -182,7 +197,7 @@ class ClockLogic:
         save_after_id = getattr(self, '_save_after_id', None)
         if save_after_id is not None:
             try:
-                self.ui.after_cancel(save_after_id)
+                self._scheduler().after_cancel(save_after_id)
             except Exception as e:
                 logger.debug("Cancel pending config save failed: %s", e)
             self._save_after_id = None
@@ -216,6 +231,48 @@ class ClockLogic:
 
     def delete_reminder(self, reminder_to_delete: dict[str, Any], notify: bool = True) -> None:
         self.reminder_service.delete_reminder(reminder_to_delete, notify)
+
+    def get_snooze_options(self) -> tuple[int, ...]:
+        """回傳提醒彈窗可選的「稍後提醒」分鐘數。"""
+        return self.reminder_service.SNOOZE_OPTIONS_MINUTES
+
+    def snooze_reminder(self, reminder: dict[str, Any], minutes: int) -> None:
+        """將已觸發的提醒延後指定分鐘再提醒。"""
+        self.reminder_service.snooze_reminder(reminder, minutes)
+
+    # --- 倒數計時器 ---
+
+    def start_countdown(self, seconds: int, label: str = "") -> None:
+        """開始（或取代）倒數計時。"""
+        self.countdown_service.start(seconds, label)
+
+    def toggle_countdown_pause(self) -> None:
+        """暫停或繼續倒數計時。"""
+        self.countdown_service.toggle_pause()
+
+    def cancel_countdown(self) -> None:
+        """取消倒數計時。"""
+        self.countdown_service.cancel()
+
+    def open_countdown_window(self) -> None:
+        """請求 UI 開啟自訂倒數視窗（透過事件解耦）。"""
+        self.notify_observers(Events.OPEN_COUNTDOWN_WINDOW)
+
+    # --- 多時區 ---
+
+    def get_zone_times(self, now: datetime | None = None) -> list[ZoneTime]:
+        """取得已選時區的目前時間，供 UI 顯示。"""
+        return self.timezone_service.get_zone_times(
+            now, self.config_manager.load_config(read_only=True)
+        )
+
+    def toggle_timezone(self, key: str) -> bool:
+        """切換時區顯示；回傳切換後是否為已選。"""
+        return self.timezone_service.toggle_zone(key)
+
+    def get_timezone_choices(self) -> tuple[dict[str, str], list[str]]:
+        """回傳 (可用時區 key->名稱, 已選時區 key 清單)，供選單建立使用。"""
+        return self.timezone_service.available_zones(), self.timezone_service.get_selected()
 
     def check_reminders(self, now: datetime | None = None) -> None:
         """

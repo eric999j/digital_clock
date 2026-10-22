@@ -9,6 +9,7 @@ description = "桌面數位時鐘 — 支援番茄鐘、提醒、整點網頁、
 requires-python = ">=3.13"
 dependencies = [
     "pynput>=1.8.1",
+    "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

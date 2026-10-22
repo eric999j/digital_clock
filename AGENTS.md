@@ -16,7 +16,7 @@ pip install pynput
 ## 專案概覽
 
 桌面數位時鐘（tkinter），支援番茄鐘、提醒、整點網頁開啟、截圖自動隱藏等功能。
-Python 3.13 + `pynput`，無其他外部依賴。
+Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無其他外部依賴。
 
 ## 架構
 

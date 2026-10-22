@@ -1,6 +1,6 @@
 """提醒服務，負責管理和檢查提醒。"""
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from core.events import Events
@@ -10,6 +10,10 @@ from strategies.reminder_strategy import ReminderStrategy
 
 class ReminderService:
     """處理提醒的新增、刪除、檢查與過期清理。"""
+
+    # 提醒彈窗提供的「稍後提醒」選項（分鐘）與可接受的上限（24 小時）
+    SNOOZE_OPTIONS_MINUTES: tuple[int, ...] = (5, 10, 30, 60)
+    MAX_SNOOZE_MINUTES: int = 24 * 60
 
     def __init__(self, config_manager: ConfigManager, notify_callback: Callable[[str, Any], None]):
         """
@@ -84,6 +88,47 @@ class ReminderService:
                 if notify:
                     self.notify(Events.REMINDER_DELETED, reminder_to_delete)
                 return
+
+    def snooze_reminder(
+        self,
+        reminder: dict[str, Any],
+        minutes: int,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """
+        將已觸發的提醒延後，建立一筆 N 分鐘後觸發的單次提醒。
+
+        Args:
+            reminder: 已觸發的提醒（週期或單次皆可）
+            minutes: 延後分鐘數，必須介於 1 與 ``MAX_SNOOZE_MINUTES`` 之間
+            now: 可選的當前時間，便於測試
+
+        Returns:
+            新建立的單次提醒資料
+
+        Raises:
+            ValueError: 延後分鐘數超出允許範圍
+        """
+        if not isinstance(minutes, int) or isinstance(minutes, bool) or not 1 <= minutes <= self.MAX_SNOOZE_MINUTES:
+            raise ValueError(f"延後分鐘數必須介於 1 到 {self.MAX_SNOOZE_MINUTES}")
+
+        due = (now or datetime.now()).replace(microsecond=0) + timedelta(minutes=minutes)
+        snoozed = {
+            "datetime": due.strftime('%Y-%m-%d %H:%M:%S'),
+            "message": reminder.get('message', ''),
+            "weekdays": [],
+            "title": reminder.get('title', ''),
+        }
+
+        config = self.config
+        config.setdefault('reminders', []).append(snoozed)
+        config['reminders'] = sorted(
+            config['reminders'],
+            key=lambda r: r.get('datetime') or r.get('time') or ''
+        )
+        self._save_config(config)
+        self.notify(Events.REMINDER_SNOOZED, snoozed, minutes)
+        return snoozed
 
     def check_reminders(
         self,

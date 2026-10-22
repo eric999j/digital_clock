@@ -6,7 +6,7 @@ import re
 import tkinter as tk
 import tkinter.font as tkfont
 import webbrowser
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from tkinter import messagebox
 
 from core.url_validator import is_safe_url
@@ -244,12 +244,62 @@ def _themed_button(
     )
 
 
+def _format_snooze_label(minutes: int) -> str:
+    """將延後分鐘數轉成選單文字，例如 ``10 分鐘後``、``1 小時後``。"""
+    if minutes >= 60 and minutes % 60 == 0:
+        return f"{minutes // 60} 小時後"
+    return f"{minutes} 分鐘後"
+
+
+def _add_snooze_button(
+    parent: tk.Misc,
+    popup: tk.Toplevel,
+    options: Sequence[int],
+    on_snooze: Callable[[int], None],
+    sys_font: str,
+) -> tk.Menubutton:
+    """在按鈕列左側加入「稍後提醒」下拉按鈕；選擇後呼叫 ``on_snooze`` 並關閉視窗。"""
+    def snooze(minutes: int) -> None:
+        try:
+            on_snooze(minutes)
+        except Exception as e:
+            logger.error("Snooze callback failed: %s", e)
+        popup.destroy()
+
+    button = tk.Menubutton(
+        parent,
+        text="稍後提醒 ▾",
+        font=(sys_font, 10),
+        relief='flat',
+        borderwidth=1,
+        cursor='hand2',
+        padx=10,
+        bg=BUTTON_BG,
+        fg=BUTTON_FG,
+        activebackground=BUTTON_HOVER_BG,
+        activeforeground=BUTTON_HOVER_FG,
+        highlightthickness=1,
+        highlightbackground=BUTTON_PRESSED_BG,
+    )
+    menu = tk.Menu(
+        button, tearoff=0, font=(sys_font, 10),
+        bg=BUTTON_BG, fg=BUTTON_FG,
+        activebackground=BUTTON_PRESSED_BG, activeforeground=BUTTON_FG,
+    )
+    for minutes in options:
+        menu.add_command(label=_format_snooze_label(minutes), command=lambda m=minutes: snooze(m))
+    button.configure(menu=menu)
+    return button
+
+
 def show_reminder_popup_window(
     parent: tk.Misc,
     message: str,
     theme: dict[str, str] | None = None,
     title: str = "提醒",
     ok_text: str = "關閉",
+    snooze_minutes: Sequence[int] | None = None,
+    on_snooze: Callable[[int], None] | None = None,
 ) -> tk.Toplevel | None:
     """在主 UI 執行緒建立非阻塞提醒視窗。
 
@@ -259,6 +309,8 @@ def show_reminder_popup_window(
         theme: 可選的主題顏色。
         title: 視窗標題。
         ok_text: 確認按鈕文字。
+        snooze_minutes: 「稍後提醒」可選的分鐘數；與 ``on_snooze`` 同時提供才會顯示按鈕。
+        on_snooze: 選擇延後時間後的回呼 ``(minutes)``。
 
     Returns:
         建立成功的 Toplevel；建立失敗時回傳 None。
@@ -278,7 +330,7 @@ def show_reminder_popup_window(
     from ui.theme_utils import is_dark_theme
     icon_char = {
         "提醒": "🔔", "成功": "✓", "錯誤": "✕", "設定錯誤": "⚠", "警告": "⚠",
-        "確認": "?", "確認刪除": "🗑", "番茄鐘": "🍅",
+        "確認": "?", "確認刪除": "🗑", "番茄鐘": "🍅", "倒數計時": "⏳",
     }.get(title, "🔔")
     link_color = '#74B9FF' if is_dark_theme(bg) else '#0066CC'
 
@@ -352,6 +404,8 @@ def show_reminder_popup_window(
         btn_area.pack(fill=tk.X, pady=(14, 0))
         btn = _themed_button(btn_area, ok_text, popup.destroy, actual_bg, actual_fg, sys_font, is_default=True)
         btn.pack(side=tk.RIGHT)
+        if snooze_minutes and on_snooze:
+            _add_snooze_button(btn_area, popup, snooze_minutes, on_snooze, sys_font).pack(side=tk.LEFT)
         popup.bind('<Return>', lambda e: popup.destroy())
         popup.bind('<Escape>', lambda e: popup.destroy())
 

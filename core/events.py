@@ -15,6 +15,17 @@ class Events:
     REMINDER_DELETED = 'reminder_deleted'
     REMINDER_UPDATED = 'reminder_updated'
     REMINDER_PAUSE_TOGGLED = 'reminder_pause_toggled'
+    REMINDER_SNOOZED = 'reminder_snoozed'
+
+    # 倒數計時器事件
+    COUNTDOWN_STARTED = 'countdown_started'
+    COUNTDOWN_TICK = 'countdown_tick'
+    COUNTDOWN_PAUSE_TOGGLED = 'countdown_pause_toggled'
+    COUNTDOWN_FINISHED = 'countdown_finished'
+    COUNTDOWN_CANCELLED = 'countdown_cancelled'
+
+    # 多時區顯示事件
+    TIMEZONES_UPDATED = 'timezones_updated'
 
     # 整點網頁提醒事件
     HOURLY_WEB_DUE = 'hourly_web_due'
@@ -33,6 +44,7 @@ class Events:
     OPEN_REMINDER_WINDOW = 'open_reminder_window'
     OPEN_HOURLY_WEB_WINDOW = 'open_hourly_web_window'
     OPEN_VACATION_SCHEDULE_WINDOW = 'open_vacation_schedule_window'
+    OPEN_COUNTDOWN_WINDOW = 'open_countdown_window'
 
     # 系統快捷鍵事件
     SCREENSHOT_TRIGGERED = 'screenshot_triggered'
