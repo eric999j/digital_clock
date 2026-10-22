@@ -43,18 +43,22 @@ class ContextMenu(Menu):
         self.add_cascade(label="整點網頁", menu=self.hourly_web_menu)
         self.add_separator()
 
-        # 倒數計時
-        self.countdown_menu = CountdownMenu(self, self.ui)
-        self.add_cascade(label="倒數計時", menu=self.countdown_menu)
-        self.add_separator()
+        # 效率提升（整點網頁下方）：收納番茄鐘與倒數計時
+        productivity_menu = Menu(self, tearoff=0)
 
         # 番茄鐘
-        self.pomodoro_menu = Menu(self, tearoff=0)
+        self.pomodoro_menu = Menu(productivity_menu, tearoff=0)
         self.pomodoro_menu.add_command(label="狀態: [就緒]", state="normal")
         self.pomodoro_menu.add_separator()
         self.pomodoro_menu.add_command(label="開始專注", command=lambda: self.logic.pomodoro.start_focus())
         self.pomodoro_menu.add_command(label="停止", command=lambda: self.logic.pomodoro.stop())
-        self.add_cascade(label="番茄鐘", menu=self.pomodoro_menu)
+        productivity_menu.add_cascade(label="番茄鐘", menu=self.pomodoro_menu)
+
+        # 倒數計時（內容隨狀態變化，開啟右鍵選單時由 DigitalClock 刷新）
+        self.countdown_menu = CountdownMenu(productivity_menu, self.ui)
+        productivity_menu.add_cascade(label="倒數計時", menu=self.countdown_menu)
+
+        self.add_cascade(label="效率提升", menu=productivity_menu)
         self.add_separator()
 
         # 時鐘設定

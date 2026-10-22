@@ -70,11 +70,37 @@ class TestContextMenuIntegration(unittest.TestCase):
         self.assertEqual(self._labels(settings)[:2], ["多時區", "---"])
         self.assertIs(settings.nametowidget(settings.entrycget(0, "menu")), menu.timezone_menu)
 
+    def test_productivity_menu_sits_below_hourly_web_and_holds_pomodoro_and_countdown(self):
+        menu = self.clock.context_menu
+        labels = self._labels(menu)
+        self.assertEqual(labels[labels.index("整點網頁") + 1:labels.index("整點網頁") + 3], ["---", "效率提升"])
+
+        productivity = menu.nametowidget(menu.entrycget(labels.index("效率提升"), "menu"))
+        self.assertEqual(self._labels(productivity), ["番茄鐘", "倒數計時"])
+        self.assertIs(productivity.nametowidget(productivity.entrycget(0, "menu")), menu.pomodoro_menu)
+        self.assertIs(productivity.nametowidget(productivity.entrycget(1, "menu")), menu.countdown_menu)
+
+    def test_nested_submenus_receive_theme_colors(self):
+        clock = self.clock
+        theme = clock.config['themes'][clock.config['appearance']['theme']]
+        clock._menu_color_cache_key = None
+        clock._update_menu_colors(clock.context_menu)
+
+        for sub in (clock.context_menu.pomodoro_menu, clock.context_menu.countdown_menu):
+            self.assertEqual(str(sub.cget("bg")), theme['bg'])
+            self.assertEqual(str(sub.cget("fg")), theme['fg'])
+
+    def test_pomodoro_status_entry_still_updates_in_nested_menu(self):
+        clock = self.clock
+        clock.update_pomodoro_display("FOCUS", 90)
+        self.assertEqual(clock.context_menu.pomodoro_menu.entrycget(0, "label"), "狀態: [專注 01:30]")
+        clock.update_pomodoro_display("IDLE", None)
+
     def test_top_level_menu_order_and_reminder_placement(self):
         labels = self._labels(self.clock.context_menu)
         entries = [label for label in labels if label != "---"]
 
-        self.assertEqual(entries, ["休假模式", "提醒", "整點網頁", "倒數計時", "番茄鐘", "時鐘設定", "離開"])
+        self.assertEqual(entries, ["休假模式", "提醒", "整點網頁", "效率提升", "時鐘設定", "離開"])
         # 不應出現連續或頭尾的分隔線
         self.assertNotEqual(labels[0], "---")
         self.assertNotEqual(labels[-1], "---")
