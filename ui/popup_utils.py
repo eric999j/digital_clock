@@ -9,6 +9,7 @@ import webbrowser
 from collections.abc import Callable
 from tkinter import messagebox
 
+from core.url_validator import is_safe_url
 from ui.theme_utils import (
     BUTTON_BG,
     BUTTON_FG,
@@ -25,7 +26,11 @@ _URL_PATTERN = re.compile(r'(https?://[^\s<>\"\']+)')
 
 
 def _open_url(url: str) -> None:
-    """在預設瀏覽器中開啟 URL。"""
+    """在預設瀏覽器中開啟 URL；僅允許 http/https，其餘一律拒絕。"""
+    url = url.strip() if isinstance(url, str) else url
+    if not is_safe_url(url) or any(ord(c) < 32 or ord(c) == 127 for c in url):
+        logger.warning("拒絕開啟不安全的 URL: %r", url)
+        return
     webbrowser.open(url)
 
 
