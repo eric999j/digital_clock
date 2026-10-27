@@ -35,15 +35,15 @@ class ContextMenu(Menu):
         self.reminder_insert_index: int = self.index('end') + 1
         # self.add_cascade(label="週期提醒", menu=reminder_menu) # Will be added by main window
 
-        # 整點網頁
+        # 整點啟動（網頁／程式）
         self.hourly_web_menu = Menu(self, tearoff=0)
         self.hourly_web_menu.add_command(label="設定", command=self.logic.open_hourly_web_window)
         pause_label = "啟動" if self.logic.is_hourly_web_paused() else "暫停"
         self.hourly_web_menu.add_command(label=pause_label, command=self.logic.toggle_hourly_web_pause)
-        self.add_cascade(label="整點網頁", menu=self.hourly_web_menu)
+        self.add_cascade(label="整點啟動", menu=self.hourly_web_menu)
         self.add_separator()
 
-        # 效率提升（整點網頁下方）：收納番茄鐘與倒數計時
+        # 效率提升（整點啟動下方）：收納番茄鐘與倒數計時
         productivity_menu = Menu(self, tearoff=0)
 
         # 番茄鐘

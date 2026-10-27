@@ -114,7 +114,7 @@ class TestHourlyWebReminderStrategy(unittest.TestCase):
         }
         now = datetime(2025, 1, 6, 9, 0, 0)
         result = self.strategy.check(config, now)
-        self.assertEqual(result, ['https://a.example', 'https://b.example'])
+        self.assertEqual([r['url'] for r in result], ['https://a.example', 'https://b.example'])
 
     def test_url_rules_returns_empty_when_no_match(self):
         """時段外沒有命中應回傳空 list。"""
@@ -139,7 +139,49 @@ class TestHourlyWebReminderStrategy(unittest.TestCase):
             'work_days_only': False,
         }
         now = datetime(2025, 1, 6, 9, 0, 0)
-        self.assertEqual(self.strategy.check(config, now), ['https://a.example'])
+        result = self.strategy.check(config, now)
+        self.assertEqual([r['url'] for r in result], ['https://a.example'])
+
+    # --- 程式規則與每規則星期 ---
+
+    def _program_rule(self, **overrides):
+        return {
+            'type': 'program', 'command': 'python.exe', 'arguments': 'a.py',
+            'start_hour': 9, 'end_hour': 9, **overrides,
+        }
+
+    def test_program_rule_is_returned_with_all_fields(self):
+        rule = self._program_rule()
+        config = {'url_rules': [rule], 'work_days_only': True}
+        self.assertEqual(self.strategy.check(config, datetime(2025, 1, 6, 9, 0)), [rule])
+
+    def test_url_and_program_rules_can_fire_in_same_hour(self):
+        config = {'url_rules': [
+            {'url': 'https://a.example', 'start_hour': 9, 'end_hour': 9},
+            self._program_rule(),
+        ]}
+        self.assertEqual(len(self.strategy.check(config, datetime(2025, 1, 6, 9, 0))), 2)
+
+    def test_same_program_with_different_arguments_not_deduped(self):
+        config = {'url_rules': [self._program_rule(), self._program_rule(arguments='b.py')]}
+        self.assertEqual(len(self.strategy.check(config, datetime(2025, 1, 6, 9, 0))), 2)
+
+    def test_same_program_and_arguments_deduped(self):
+        config = {'url_rules': [self._program_rule(), self._program_rule()]}
+        self.assertEqual(len(self.strategy.check(config, datetime(2025, 1, 6, 9, 0))), 1)
+
+    def test_rule_weekdays_override_work_days_only(self):
+        """規則指定週六時，即使全域僅工作日也要觸發。"""
+        config = {'url_rules': [self._program_rule(weekdays=[5])], 'work_days_only': True}
+        self.assertEqual(len(self.strategy.check(config, datetime(2025, 1, 4, 9, 0))), 1)
+
+    def test_rule_weekdays_exclude_other_days(self):
+        config = {'url_rules': [self._program_rule(weekdays=[0, 1, 2, 3, 4])], 'work_days_only': False}
+        self.assertEqual(self.strategy.check(config, datetime(2025, 1, 4, 9, 0)), [])
+
+    def test_empty_command_is_ignored(self):
+        config = {'url_rules': [self._program_rule(command='  ')]}
+        self.assertEqual(self.strategy.check(config, datetime(2025, 1, 6, 9, 0)), [])
 
 
 if __name__ == '__main__':

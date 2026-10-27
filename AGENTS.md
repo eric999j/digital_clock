@@ -15,7 +15,7 @@ pip install pynput
 
 ## 專案概覽
 
-桌面數位時鐘（tkinter），支援番茄鐘、提醒、整點網頁開啟、截圖自動隱藏等功能。
+桌面數位時鐘（tkinter），支援番茄鐘、提醒、整點啟動（網頁／程式）、截圖自動隱藏等功能。
 Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無其他外部依賴。
 
 ## 架構
@@ -56,7 +56,7 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無�
 | Strategy | `check()` 回傳 | 說明 |
 |---|---|---|
 | `ReminderStrategy` | `tuple[list[dict], str]` | `(triggered, updated_minute_key)`；去重狀態由 `ReminderService._last_weekly_minute_key` 持有 |
-| `HourlyWebReminderStrategy` | `str \| None` | 要開啟的 URL，或 None；支援 `url_rules` 時段路由 |
+| `HourlyWebReminderStrategy` | `list[dict]` | 此刻命中的規則（網頁或程式），空 list 表示不觸發；規則可帶 `weekdays` 覆蓋全域 `work_days_only` |
 | `PomodoroStrategy` | `str` | 下一個階段名稱 |
 | `VacationScheduleStrategy` | `dict` | 含 `active/expired/future/invalid` 分類 |
 
@@ -67,7 +67,7 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無�
 - ConfigManager 測試需先 `ConfigManager._instance = None` 重設 Singleton
 - Strategy 有狀態（如 `last_triggered_hour`），測試間需確保隔離
 - 設定檔路徑 `~/.digital_clock/config.json`，測試時 mock `Path.home()`
-- Strategy mock 回傳值須符合型別：`ReminderStrategy` → `([], "")` tuple；`HourlyWebReminderStrategy` → `None`（非 `False`）
+- Strategy mock 回傳值須符合型別：`ReminderStrategy` → `([], "")` tuple；`HourlyWebReminderStrategy` → `[]`（規則 dict 清單）
 
 ## 關鍵模組補充
 
@@ -79,11 +79,17 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無�
 | `ui/popup_utils.py` | 提供非阻塞提醒彈窗，**支援 Markdown 行內語法渲染**（粗體、斜體、code、連結、URL）。**禁止直接使用 `tkinter.messagebox`**——所有確認、錯誤、通知彈窗均須呼叫此模組函數，確保主題配色一致 |
 | `ui/menus/` | `context_menu.py`、`reminder_menu.py`、`vacation_menu.py`，右鍵選單子元件 |
 
-### 整點網頁 Config 結構
+### 整點啟動（原「整點網頁」）Config 結構
+
+內部仍沿用 `hourly_web_reminder` / `HourlyWebService` 等名稱以相容舊設定，只有使用者可見文字改為「整點啟動」。
 
 ```json
 "hourly_web_reminder": {
-  "url_rules": [{"url": "https://...", "start_hour": 9, "end_hour": 12}],
+  "url_rules": [
+    {"url": "https://...", "start_hour": 9, "end_hour": 12},
+    {"type": "program", "command": "C:\\Python313\\python.exe", "arguments": "job.py",
+     "working_dir": "C:\\Daily", "start_hour": 9, "end_hour": 9, "weekdays": [0,1,2,3,4], "name": "最新公告"}
+  ],
   "paused": false,
   "work_days_only": true,
   "url": "",        // 舊版相容欄位，Strategy 在 url_rules 為空時使用
@@ -92,8 +98,11 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無�
 }
 ```
 
-- 新增規則：加入 `url_rules` 清單；`update_config(url_rules)` 同時更新舊版欄位保持相容。
-- Strategy 優先用 `url_rules`，逐條比對 `start_hour ≤ now.hour ≤ end_hour`，回傳第一個命中的 URL。
+- 無 `type` 的規則視為網頁；`type=program` 是程式。共用邏輯在 `core/launch_rules.py`。
+- `update_config(url_rules)` 只用第一筆網頁規則同步舊欄位；無網頁規則時清空 `url`。
+- Strategy 逐條比對 `start_hour ≤ now.hour ≤ end_hour`，回傳所有命中規則（依目標去重）。
+- 程式一律經 `core/program_launcher.launch_program()` 啟動：不經 shell、不等待結束。
+- 工作排程器 XML 匯入在 `core/task_xml_importer.py`（僅支援每日／每週 + Exec，拒絕 DOCTYPE）。
 
 ## 常見陷阱
 

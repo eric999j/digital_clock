@@ -324,7 +324,7 @@ class DigitalClock(Observer):
         self.config['hourly_web_reminder'] = fresh.get('hourly_web_reminder', {})
         self.config['reminders'] = fresh.get('reminders', [])
         self.config['vacation_schedules'] = fresh.get('vacation_schedules', [])
-        self._show_themed_info("整點網頁提醒設定已更新！")
+        self._show_themed_info("整點啟動設定已更新！")
 
     def _on_hourly_web_pause_toggled(self, is_paused: bool, *args) -> None:
         label = "啟動" if is_paused else "暫停"
@@ -372,7 +372,7 @@ class DigitalClock(Observer):
         self.root.after_idle(open_window)
 
     def _on_open_hourly_web_window(self, *args) -> None:
-        """開啟整點網頁提醒設定視窗。"""
+        """開啟整點啟動設定視窗。"""
         from ui.hourly_web_window import HourlyWebWindow
 
         def open_window() -> None:

@@ -73,7 +73,7 @@ class TestContextMenuIntegration(unittest.TestCase):
     def test_productivity_menu_sits_below_hourly_web_and_holds_pomodoro_and_countdown(self):
         menu = self.clock.context_menu
         labels = self._labels(menu)
-        self.assertEqual(labels[labels.index("整點網頁") + 1:labels.index("整點網頁") + 3], ["---", "效率提升"])
+        self.assertEqual(labels[labels.index("整點啟動") + 1:labels.index("整點啟動") + 3], ["---", "效率提升"])
 
         productivity = menu.nametowidget(menu.entrycget(labels.index("效率提升"), "menu"))
         self.assertEqual(self._labels(productivity), ["番茄鐘", "倒數計時"])
@@ -100,7 +100,7 @@ class TestContextMenuIntegration(unittest.TestCase):
         labels = self._labels(self.clock.context_menu)
         entries = [label for label in labels if label != "---"]
 
-        self.assertEqual(entries, ["休假模式", "提醒", "整點網頁", "效率提升", "時鐘設定", "離開"])
+        self.assertEqual(entries, ["休假模式", "提醒", "整點啟動", "效率提升", "時鐘設定", "離開"])
         # 不應出現連續或頭尾的分隔線
         self.assertNotEqual(labels[0], "---")
         self.assertNotEqual(labels[-1], "---")

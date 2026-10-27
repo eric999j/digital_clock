@@ -30,7 +30,7 @@ class TestHourlyWebUpdatedThemeSync(unittest.TestCase):
         self.assertEqual(len(ui.config['hourly_web_reminder']['url_rules']), 1)
         self.assertEqual(len(ui.config['reminders']), 1)
         self.assertEqual(len(ui.config['vacation_schedules']), 1)
-        ui._show_themed_info.assert_called_once_with('整點網頁提醒設定已更新！')
+        ui._show_themed_info.assert_called_once_with('整點啟動設定已更新！')
 
 
 class TestHourlyWebWindowRuleContextMenu(unittest.TestCase):

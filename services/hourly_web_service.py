@@ -1,4 +1,4 @@
-"""整點網頁服務，負責整點網頁提醒。"""
+"""整點啟動服務，負責整點開啟網頁或啟動程式。"""
 import logging
 import webbrowser
 from collections.abc import Callable
@@ -9,16 +9,18 @@ from services.config_service import ConfigManager
 
 logger = logging.getLogger(__name__)
 from core.events import Events
+from core.launch_rules import RULE_PROGRAM, RULE_URL, rule_target, rule_type
+from core.program_launcher import LaunchError, launch_program
 from core.url_validator import is_safe_url
 from strategies.hourly_web_strategy import HourlyWebReminderStrategy
 
 
 class HourlyWebService:
-    """處理整點網頁提醒的邏輯。"""
+    """處理整點啟動（網頁與程式）的邏輯。"""
 
     def __init__(self, config_manager: ConfigManager, notify_callback: Callable[[str, Any], None]):
         """
-        初始化整點網頁服務。
+        初始化整點啟動服務。
 
         Args:
             config_manager: 設定管理器
@@ -33,20 +35,24 @@ class HourlyWebService:
         return self.config_manager.load_config()
 
     def update_config(self, url_rules: list[dict]) -> None:
-        """更新整點網頁設定，並將第一樢記錄到 url/start_hour/end_hour 供舊版相容。"""
+        """更新整點啟動規則，並將第一筆網頁規則同步到 url/start_hour/end_hour 供舊版相容。"""
         config = self.config
         hw = config.setdefault('hourly_web_reminder', {})
         hw['url_rules'] = url_rules
-        if url_rules:
-            hw['url'] = url_rules[0]['url']
-            hw['start_hour'] = url_rules[0]['start_hour']
-            hw['end_hour'] = url_rules[0]['end_hour']
+        first_url_rule = next((r for r in url_rules if rule_type(r) == RULE_URL), None)
+        if first_url_rule:
+            hw['url'] = first_url_rule['url']
+            hw['start_hour'] = first_url_rule['start_hour']
+            hw['end_hour'] = first_url_rule['end_hour']
+        else:
+            # 清空舊欄位，避免規則刪光後策略退回舊版單一 URL 而復活
+            hw['url'] = ''
         self.config_manager.save_config(config)
         self.notify(Events.HOURLY_WEB_UPDATED, None)
 
     def check(self, now: datetime | None = None, config: dict[str, Any] | None = None) -> None:
         """
-        檢查是否需要觸發整點網頁提醒。
+        檢查是否需要觸發整點啟動。
 
         Args:
             now: 可選的當前時間快照
@@ -58,24 +64,39 @@ class HourlyWebService:
         config_data = config if config is not None else self.config
         hourly_config = config_data.get('hourly_web_reminder', {})
 
-        urls = self.strategy.check(hourly_config, current_time)
-        if not urls:
+        rules = self.strategy.check(hourly_config, current_time)
+        if not rules:
             return
 
         opened_any = False
-        for url in urls:
-            if not is_safe_url(url):
-                logger.warning("Refusing to open URL with unsupported scheme: %r", url)
-                continue
-            try:
-                webbrowser.open(url, new=2)
-                self.notify(Events.HOURLY_WEB_DUE, url)
+        for rule in rules:
+            if rule_type(rule) == RULE_PROGRAM:
+                self._launch_rule_program(rule)
+            elif self._open_url(rule_target(rule)):
                 opened_any = True
-            except Exception as e:
-                logger.error("Error opening URL: %s", e)
 
         if opened_any:
             self._bring_browser_to_front()
+
+    def _open_url(self, url: str) -> bool:
+        if not is_safe_url(url):
+            logger.warning("Refusing to open URL with unsupported scheme: %r", url)
+            return False
+        try:
+            webbrowser.open(url, new=2)
+            self.notify(Events.HOURLY_WEB_DUE, url)
+            return True
+        except Exception as e:
+            logger.error("Error opening URL: %s", e)
+            return False
+
+    def _launch_rule_program(self, rule: dict[str, Any]) -> None:
+        command = rule_target(rule)
+        try:
+            launch_program(command, rule.get('arguments', ''), rule.get('working_dir', ''))
+            self.notify(Events.HOURLY_WEB_DUE, command)
+        except LaunchError as e:
+            logger.error("Hourly launch failed: %s", e)
 
     def _bring_browser_to_front(self) -> None:
         """嘗試將瀏覽器視窗帶到最前面（僅 Windows）。"""
