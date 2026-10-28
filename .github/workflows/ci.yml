@@ -10,6 +10,7 @@ jobs:
   test:
     name: test (${{ matrix.os }} / py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -40,7 +41,7 @@ jobs:
       - name: Run unittests with coverage (Linux)
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a python -m coverage run -m unittest discover -s tests
+          xvfb-run -a python -X faulthandler -m coverage run -m unittest discover -v -s tests
           python -m coverage xml
           python -m coverage report
 

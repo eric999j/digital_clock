@@ -21,7 +21,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         try:
             cls.root = tk.Tk()
         except tk.TclError as e:
-            raise unittest.SkipTest(f"無可用顯示器: {e}")
+            raise unittest.SkipTest(f"無可用顯示器: {e}") from e
         cls.root.withdraw()
 
     @classmethod

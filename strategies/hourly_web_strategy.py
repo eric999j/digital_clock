@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any
 
 from core.launch_rules import RULE_URL, rule_key, rule_target
+
 from .base import CheckStrategy
 
 
