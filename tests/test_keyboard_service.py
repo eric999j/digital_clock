@@ -1,8 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from pynput.keyboard import Key
+from pynput.keyboard import Key, KeyCode
 
+from services.config_service import ConfigManager
 from services.keyboard_service import KeyboardService
 
 
@@ -89,6 +90,67 @@ class TestKeyboardService(unittest.TestCase):
         del mock_key.char
         self.service._on_press(mock_key)
         self.mock_callback.assert_not_called()
+
+
+class TestScreenshotShortcutWithDefaultConfig(unittest.TestCase):
+    """以預設設定驗證 Win+Shift+S 與 PrtScn，並重現 pynput 在 Shift 按住時回報大寫字元的行為。"""
+
+    def setUp(self):
+        defaults = ConfigManager().default_config['system']
+        mgr = MagicMock()
+        mgr.load_config.return_value = {'system': defaults}
+        self.callback = MagicMock()
+        self.service = KeyboardService(mgr, self.callback)
+
+    @staticmethod
+    def _char(value: str) -> KeyCode:
+        return KeyCode.from_char(value)
+
+    def _press_release(self, *keys) -> None:
+        for key in keys:
+            self.service._on_press(key)
+        for key in reversed(keys):
+            self.service._on_key_release(key)
+
+    def test_win_shift_s_triggers_even_though_pynput_reports_uppercase(self):
+        self._press_release(Key.cmd_l, Key.shift, self._char('S'))
+        self.callback.assert_called_once()
+
+    def test_right_hand_modifiers_also_trigger(self):
+        self._press_release(Key.cmd_r, Key.shift_r, self._char('S'))
+        self.callback.assert_called_once()
+
+    def test_no_stale_keys_remain_after_release(self):
+        # Shift 先放開時，'S' 的釋放事件會以小寫回報
+        self.service._on_press(Key.cmd_l)
+        self.service._on_press(Key.shift)
+        self.service._on_press(self._char('S'))
+        self.service._on_key_release(Key.shift)
+        self.service._on_key_release(self._char('s'))
+        self.service._on_key_release(Key.cmd_l)
+        self.assertEqual(self.service.pressed_keys, set())
+
+    def test_triggers_again_on_next_shortcut_but_not_while_held(self):
+        self.service._on_press(Key.cmd_l)
+        self.service._on_press(Key.shift)
+        self.service._on_press(self._char('S'))
+        self.service._on_press(self._char('S'))  # \u9577\u6309\u81ea\u52d5\u91cd\u8907
+        self.assertEqual(self.callback.call_count, 1)
+        self._press_release(self._char('S'))
+        self.service._on_press(self._char('S'))
+        self.assertEqual(self.callback.call_count, 2)
+
+    def test_plain_shift_s_does_not_trigger(self):
+        self._press_release(Key.shift, self._char('S'))
+        self.callback.assert_not_called()
+
+    def test_print_screen_triggers_once_even_when_held(self):
+        self.service._on_press(Key.print_screen)
+        self.service._on_press(Key.print_screen)
+        self.callback.assert_called_once()
+        self.service._on_key_release(Key.print_screen)
+        self.service._on_press(Key.print_screen)
+        self.assertEqual(self.callback.call_count, 2)
 
 
 if __name__ == '__main__':

@@ -92,6 +92,7 @@ class ConfigManager:
                 "save_delay_ms": 1000,
                 "hide_duration_ms": 2000,
                 "screenshot_keys": ["win", "shift", "s"],
+                "screenshot_single_keys": ["print_screen"],
                 "performance_monitor": {
                     "enabled": False,
                     "log_interval_sec": 60
