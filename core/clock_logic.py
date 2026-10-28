@@ -54,7 +54,8 @@ class ClockLogic:
             callbacks={
                 "on_phase_change": self._pomodoro_phase_change,
                 "on_tick": self._pomodoro_tick,
-                "on_complete": self._pomodoro_phase_complete
+                "on_complete": self._pomodoro_phase_complete,
+                "on_pause_toggle": self._pomodoro_pause_toggled,
             }
         )
         # P2: pomodoro.stop 儲存在 PauseManager 內，避免 VacationScheduleService 直接耗合 Pomodoro
@@ -216,6 +217,9 @@ class ClockLogic:
 
     def _pomodoro_phase_complete(self, phase: str) -> None:
         self.notify_observers(Events.POMODORO_PHASE_COMPLETE, phase)
+
+    def _pomodoro_pause_toggled(self, is_paused: bool) -> None:
+        self.notify_observers(Events.POMODORO_PAUSE_TOGGLED, is_paused)
 
     def _on_screenshot_triggered(self) -> None:
         """將截圖事件安全轉送到 Tk 主執行緒。"""

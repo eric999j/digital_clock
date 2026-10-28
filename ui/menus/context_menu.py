@@ -3,6 +3,7 @@ from tkinter import Menu
 from typing import TYPE_CHECKING
 
 from ui.menus.countdown_menu import CountdownMenu
+from ui.menus.pomodoro_menu import PomodoroMenu
 from ui.menus.timezone_menu import TimezoneMenu
 
 if TYPE_CHECKING:
@@ -46,10 +47,8 @@ class ContextMenu(Menu):
         # 效率提升（整點啟動下方）：收納番茄鐘與倒數計時
         productivity_menu = Menu(self, tearoff=0)
 
-        # 番茄鐘
-        self.pomodoro_menu = Menu(productivity_menu, tearoff=0)
-        self.pomodoro_menu.add_command(label="開始專注", command=lambda: self.logic.pomodoro.start_focus())
-        self.pomodoro_menu.add_command(label="停止", command=lambda: self.logic.pomodoro.stop())
+        # 番茄鐘（內容隨狀態變化，開啟右鍵選單時由 DigitalClock 刷新）
+        self.pomodoro_menu = PomodoroMenu(productivity_menu, self.ui)
         productivity_menu.add_cascade(label="番茄鐘", menu=self.pomodoro_menu)
 
         # 倒數計時（內容隨狀態變化，開啟右鍵選單時由 DigitalClock 刷新）

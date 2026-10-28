@@ -30,8 +30,14 @@ class PomodoroService:
         self.callbacks = callbacks or {}
         self._clock = clock
         self._deadline: float = 0.0
+        self._paused_remaining: float | None = None
         self.phase: str = "IDLE"
         self.current_cycle: int = 0
+
+    @property
+    def is_paused(self) -> bool:
+        """目前階段是否暂停中。"""
+        return self._paused_remaining is not None
 
     @property
     def remaining_seconds(self) -> int:
@@ -39,11 +45,36 @@ class PomodoroService:
         if self.phase == "IDLE":
             return 0
         # 扣除極小值，避免浮點誤差讓剛開始的階段多算 1 秒
-        return max(0, math.ceil(self._deadline - self._clock() - 1e-6))
+        left = self._paused_remaining if self._paused_remaining is not None else self._deadline - self._clock()
+        return max(0, math.ceil(left - 1e-6))
 
     @remaining_seconds.setter
     def remaining_seconds(self, seconds: int) -> None:
+        # 重設剩餘時間（開始新階段或停止）時一併解除暂停
+        self._paused_remaining = None
         self._deadline = self._clock() + seconds
+
+    def pause(self) -> None:
+        """暫停番茄鐘；閒置或已暫停時不做事。"""
+        if self.phase == "IDLE" or self.is_paused:
+            return
+        self._paused_remaining = max(0.0, self._deadline - self._clock())
+        self._emit("on_pause_toggle", True)
+
+    def resume(self) -> None:
+        """繼續番茄鐘；未暫停時不做事。"""
+        if self._paused_remaining is None:
+            return
+        self._deadline = self._clock() + self._paused_remaining
+        self._paused_remaining = None
+        self._emit("on_pause_toggle", False)
+
+    def toggle_pause(self) -> None:
+        """在暫停與繼續之間切換。"""
+        if self.is_paused:
+            self.resume()
+        else:
+            self.pause()
 
     def start_focus(self) -> None:
         """開始專注階段。"""
@@ -70,7 +101,7 @@ class PomodoroService:
         剩餘時間依穿越時間計算，因此漏 tick 或長時間停滽後仍能追上；
         一次 tick 最多推進一個階段，不會連續跳過多個階段。
         """
-        if self.phase == "IDLE":
+        if self.phase == "IDLE" or self.is_paused:
             return
 
         remaining = self.remaining_seconds

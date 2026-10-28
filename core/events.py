@@ -8,6 +8,7 @@ class Events:
     POMODORO_PHASE_CHANGE = 'pomodoro_phase_change'
     POMODORO_TICK = 'pomodoro_tick'
     POMODORO_PHASE_COMPLETE = 'pomodoro_phase_complete'
+    POMODORO_PAUSE_TOGGLED = 'pomodoro_pause_toggled'
 
     # 提醒相關事件
     REMINDER_DUE = 'reminder_due'

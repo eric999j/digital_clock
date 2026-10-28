@@ -151,6 +151,7 @@ class DigitalClock(Observer):
             Events.POMODORO_PHASE_CHANGE: self._on_pomodoro_phase_change,
             Events.POMODORO_TICK: self._on_pomodoro_tick,
             Events.POMODORO_PHASE_COMPLETE: self._on_pomodoro_phase_complete,
+            Events.POMODORO_PAUSE_TOGGLED: self._on_pomodoro_pause_toggled,
             Events.REMINDER_DUE: self._on_reminder_due,
             Events.REMINDER_SNOOZED: self._on_reminder_snoozed,
             Events.COUNTDOWN_STARTED: self._on_countdown_changed,
@@ -197,6 +198,9 @@ class DigitalClock(Observer):
 
     def _on_pomodoro_tick(self, phase: str, remaining: int, *args) -> None:
         self.update_pomodoro_display(phase, remaining)
+
+    def _on_pomodoro_pause_toggled(self, is_paused: bool, *args) -> None:
+        self.update_pomodoro_display(self.logic.pomodoro.phase, None)
 
     def _on_pomodoro_phase_complete(self, new_phase: str, *args) -> None:
         from ui.popup_utils import show_reminder_popup_window
@@ -571,6 +575,8 @@ class DigitalClock(Observer):
             seconds_left = self.logic.pomodoro.remaining_seconds if remaining is None else remaining
             minutes, seconds = divmod(max(0, seconds_left), 60)
             self._pomodoro_line = f"{phase_map[phase]} {minutes:02}:{seconds:02}"
+            if self.logic.pomodoro.is_paused:
+                self._pomodoro_line += " (暫停)"
 
         if is_phase_change:
             # 階段變更時立即更新時鐘下方資訊列；一般 tick 由 update_time 每秒刷新
@@ -681,6 +687,7 @@ class DigitalClock(Observer):
             self._update_vacation_menu()
             self.context_menu.countdown_menu.update_menu()
             self.context_menu.timezone_menu.update_menu()
+            self.context_menu.pomodoro_menu.update_menu()
             self._context_menu_open = True
             self.context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
@@ -1322,6 +1329,21 @@ class DigitalClock(Observer):
     INFO_BAND_PADDING = 6
     _context_menu_open: bool = False
     _pomodoro_line: str = ""
+    _info_probe_font: tkfont.Font | None = None
+
+    def _fit_info_font_size(self, available: int) -> int:
+        """回傳資訊列在可用寬度內的最大字級；以独立的量測字型計算，不動到畫面上在用的字型。"""
+        probe = self._info_probe_font
+        if probe is None:
+            probe = self._info_probe_font = tkfont.Font(root=self.root, font=self._info_font)
+        family = self._info_font.cget('family')
+        size = self._info_font_size
+        probe.configure(family=family, size=size)
+        while size > 8 and max(probe.measure(line) for line in self._info_lines) > available:
+            size -= 1
+            probe.configure(size=size)
+        return size
+
     def _update_info_font(self) -> None:
         """依目前字型與大小更新資訊列字型與行高（字體約為時鐘的 1/4）。"""
         family = self.config['appearance']['font_family']
@@ -1405,11 +1427,9 @@ class DigitalClock(Observer):
         fg_color = theme['fg'] if theme else 'white'
         width = self.config['window']['width']
 
-        size = self._info_font_size
-        self._info_font.configure(size=size)
-        available = max(10, width - 16)
-        while size > 8 and max(self._info_font.measure(line) for line in self._info_lines) > available:
-            size -= 1
+        size = self._fit_info_font_size(max(10, width - 16))
+        # 即使設定相同值，重設已使用中的具名字型仍會讓開啟中的 Windows 右鍵選單被關閉
+        if int(self._info_font.cget('size')) != size:
             self._info_font.configure(size=size)
 
         top = self._base_height - 2

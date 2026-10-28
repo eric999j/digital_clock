@@ -95,8 +95,44 @@ class TestContextMenuIntegration(unittest.TestCase):
             self.assertEqual(str(sub.cget("bg")), theme['bg'])
             self.assertEqual(str(sub.cget("fg")), theme['fg'])
 
-    def test_pomodoro_menu_has_no_status_entry(self):
-        self.assertEqual(self._labels(self.clock.context_menu.pomodoro_menu), ["開始專注", "停止"])
+    def test_pomodoro_menu_offers_pause_and_cancel_only_while_running(self):
+        clock = self.clock
+        menu = clock.context_menu.pomodoro_menu
+        menu.update_menu()
+        self.assertEqual(self._labels(menu), ["開始專注"])
+
+        clock.logic.pomodoro.start_focus()
+        try:
+            menu.update_menu()
+            self.assertEqual(self._labels(menu), ["暫停", "取消番茄鐘", "---", "開始專注"])
+
+            menu.invoke(0)
+            self.assertTrue(clock.logic.pomodoro.is_paused)
+            self.assertTrue(clock._pomodoro_line.endswith("(暫停)"))
+            menu.update_menu()
+            self.assertEqual(self._labels(menu)[0], "繼續")
+
+            menu.invoke(0)
+            self.assertFalse(clock.logic.pomodoro.is_paused)
+            self.assertFalse(clock._pomodoro_line.endswith("(暫停)"))
+
+            menu.invoke(1)
+            self.assertEqual(clock.logic.pomodoro.phase, "IDLE")
+            self.assertEqual(clock._pomodoro_line, "")
+        finally:
+            clock.logic.pomodoro.stop()
+
+    def test_countdown_menu_has_no_remaining_entry(self):
+        clock = self.clock
+        clock.logic.start_countdown(300)
+        try:
+            menu = clock.context_menu.countdown_menu
+            menu.update_menu()
+            labels = self._labels(menu)
+            self.assertEqual(labels[:3], ["暫停", "取消倒數", "---"])
+            self.assertFalse(any("剩餘" in label for label in labels))
+        finally:
+            clock.logic.cancel_countdown()
 
     def test_top_level_menu_order_and_reminder_placement(self):
         labels = self._labels(self.clock.context_menu)
@@ -159,6 +195,33 @@ class TestContextMenuIntegration(unittest.TestCase):
         finally:
             clock.logic.pomodoro.stop()
         self.assertFalse(any(line.startswith("專注") for line in clock._compose_info_lines()))
+
+    def test_info_band_redraw_does_not_reconfigure_font_when_size_is_unchanged(self):
+        # 重設使用中的具名字型會讓 Windows 上開啟中的右鍵選單被關閉
+        clock = self.clock
+        clock.logic.pomodoro.start_focus()
+        try:
+            with patch.object(clock._info_font, "configure") as configure:
+                clock._render_info_band()
+                clock._render_info_band()
+            configure.assert_not_called()
+        finally:
+            clock.logic.pomodoro.stop()
+
+    def test_info_band_font_still_shrinks_to_fit_narrow_window(self):
+        clock = self.clock
+        clock.logic.pomodoro.start_focus()
+        original_width = clock.config['window']['width']
+        size_before = int(clock._info_font.cget("size"))
+        try:
+            clock.config['window']['width'] = 40
+            clock._render_info_band()
+            self.assertLess(int(clock._info_font.cget("size")), size_before)
+        finally:
+            clock.config['window']['width'] = original_width
+            clock._render_info_band()
+            clock.logic.pomodoro.stop()
+        self.assertEqual(int(clock._info_font.cget("size")), size_before)
 
     def test_window_is_not_resized_while_menu_is_open(self):
         clock = self.clock

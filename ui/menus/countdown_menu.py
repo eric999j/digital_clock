@@ -26,10 +26,6 @@ class CountdownMenu(Menu):
         snapshot = self.logic.countdown_service.snapshot()
 
         if snapshot["state"] != CountdownService.IDLE:
-            name = f"{snapshot['label']} " if snapshot["label"] else ""
-            remaining = CountdownService.format_remaining(snapshot["remaining"])
-            paused = "（已暫停）" if snapshot["state"] == CountdownService.PAUSED else ""
-            self.add_command(label=f"{name}剩餘 {remaining}{paused}", state="disabled")
             resume = snapshot["state"] == CountdownService.PAUSED
             self.add_command(
                 label="繼續" if resume else "暫停",

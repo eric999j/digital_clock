@@ -81,6 +81,45 @@ class TestPomodoroService(unittest.TestCase):
         self.assertEqual(self.service.phase, "SHORT_BREAK")
         self.assertEqual(completed, ["SHORT_BREAK"])
 
+    def test_pause_freezes_remaining_and_resume_continues(self):
+        toggles = []
+        self.service.callbacks = {'on_pause_toggle': toggles.append}
+        self.service.start_focus()
+        self.clock.advance(60)
+        self.service.pause()
+
+        self.clock.advance(600)  # 暫停期間的時間不計
+        self.service.tick()
+        self.assertTrue(self.service.is_paused)
+        self.assertEqual(self.service.remaining_seconds, 24 * 60)
+        self.assertEqual(self.service.phase, "FOCUS")
+
+        self.service.resume()
+        self.clock.advance(30)
+        self.assertEqual(self.service.remaining_seconds, 24 * 60 - 30)
+        self.assertEqual(toggles, [True, False])
+
+    def test_pause_does_nothing_when_idle_or_already_paused(self):
+        toggles = []
+        self.service.callbacks = {'on_pause_toggle': toggles.append}
+        self.service.pause()
+        self.service.resume()
+        self.service.start_focus()
+        self.service.pause()
+        self.service.pause()
+        self.assertEqual(toggles, [True])
+
+    def test_stop_and_restart_clear_pause(self):
+        self.service.start_focus()
+        self.service.pause()
+        self.service.start_focus()
+        self.assertFalse(self.service.is_paused)
+
+        self.service.pause()
+        self.service.stop()
+        self.assertFalse(self.service.is_paused)
+        self.assertEqual(self.service.remaining_seconds, 0)
+
     def test_stop_resets_to_idle(self):
         self.service.start_focus()
         self.service.stop()
