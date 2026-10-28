@@ -3,6 +3,17 @@ import unittest
 from services.pomodoro_service import PomodoroService
 
 
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 class TestPomodoroService(unittest.TestCase):
     def setUp(self):
         self.config = {
@@ -12,7 +23,8 @@ class TestPomodoroService(unittest.TestCase):
             "cycles_before_long_break": 4
         }
         self.callbacks = {} # Mock callbacks if needed
-        self.service = PomodoroService(lambda: self.config, self.callbacks)
+        self.clock = FakeClock()
+        self.service = PomodoroService(lambda: self.config, self.callbacks, clock=self.clock)
 
     def test_initial_state(self):
         self.assertEqual(self.service.phase, "IDLE")
@@ -27,6 +39,7 @@ class TestPomodoroService(unittest.TestCase):
         self.service.start_focus()
         initial_seconds = self.service.remaining_seconds
 
+        self.clock.advance(1)
         self.service.tick()
         self.assertEqual(self.service.remaining_seconds, initial_seconds - 1)
 
@@ -34,32 +47,47 @@ class TestPomodoroService(unittest.TestCase):
         ticks = []
         self.service.callbacks = {'on_tick': lambda phase, remaining: ticks.append(remaining)}
         self.service.start_focus()
-        self.service.remaining_seconds = 1
+        self.clock.advance(25 * 60 + 30)  # 超過截止時間
 
         self.service.tick()
 
         self.assertEqual(ticks, [0])
         self.assertGreaterEqual(self.service.remaining_seconds, 0)
 
-    def test_phase_completion_cycle(self):
-        # Simulate end of focus
+    def test_skipped_ticks_do_not_cause_drift(self):
         self.service.start_focus()
-        self.service.remaining_seconds = 1
-        self.service.tick() # 0, should complete
+        self.clock.advance(30)  # 主迴圈卡住 30 秒，期間沒有任何 tick
+        self.service.tick()
+        self.assertEqual(self.service.remaining_seconds, 25 * 60 - 30)
 
-        # Assuming internal logic transitions or waits?
-        # Let's check the source.
-        # Source calls _complete_phase() when <= 0.
-        # _complete_phase normally increments cycle and maybe auto-starts break or goes IDLE?
-        # Based on typical implementation, we might need to check if it calls a callback or changes state.
+    def test_long_suspend_advances_only_one_phase(self):
+        phases = []
+        self.service.callbacks = {'on_phase_change': phases.append}
+        self.service.start_focus()
+        self.clock.advance(3 * 3600)  # 睡眠後喚醒
+        self.service.tick()
 
-        # Since I can't see private methods easily in my memory, let's assume it updates current_cycle
-        # Re-reading source snippet:
-        # if self.remaining_seconds <= 0: self._complete_phase()
+        self.assertEqual(phases, ["FOCUS", "SHORT_BREAK"])
+        self.assertEqual(self.service.remaining_seconds, 5 * 60)
 
-        # If I can't verify exact transition without seeing _complete_phase,
-        # I'll rely on what I saw or add a test that checks if cycle count increases.
-        pass
+    def test_phase_completion_cycle(self):
+        completed = []
+        self.service.callbacks = {'on_complete': completed.append}
+        self.service.start_focus()
+        self.clock.advance(25 * 60)
+        self.service.tick()
+
+        self.assertEqual(self.service.current_cycle, 1)
+        self.assertEqual(self.service.phase, "SHORT_BREAK")
+        self.assertEqual(completed, ["SHORT_BREAK"])
+
+    def test_stop_resets_to_idle(self):
+        self.service.start_focus()
+        self.service.stop()
+        self.assertEqual((self.service.phase, self.service.remaining_seconds), ("IDLE", 0))
+        self.clock.advance(10)
+        self.service.tick()  # 閒置時 tick 不做事
+        self.assertEqual(self.service.phase, "IDLE")
 
     def test_start_break_short(self):
         self.service.current_cycle = 1
