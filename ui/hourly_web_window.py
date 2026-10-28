@@ -14,6 +14,7 @@ from ui.theme_utils import (
     apply_themed_ttk_style,
     compute_brightness,
     compute_separator_color,
+    get_mono_font_family,
     shift_color,
     themed_error,
     themed_info,
@@ -105,7 +106,7 @@ class HourlyWebWindow(tk.Toplevel):
         cols.pack(fill=tk.BOTH, expand=True)
         self._rules_listbox = tk.Listbox(
             cols, height=5, selectmode=tk.SINGLE,
-            bg='white', fg='black', font=('Consolas', 9), activestyle='dotbox',
+            bg='white', fg='black', font=(get_mono_font_family(), 9), activestyle='dotbox',
         )
         self._rules_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._rules_listbox.bind('<Double-Button-1>', self._open_selected_rule_url)

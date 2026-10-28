@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import sys
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk
 from typing import TYPE_CHECKING
 
@@ -15,6 +17,34 @@ if TYPE_CHECKING:
 
 _DEFAULT_BG = '#F0F0F0'
 _DEFAULT_FG = '#000000'
+
+# --- Design tokens：字級（pt）與間距（px，96 DPI 基準）---
+FONT_SIZE_CAPTION = 10
+FONT_SIZE_BODY = 11
+FONT_SIZE_TITLE = 12
+FONT_SIZE_ICON = 15
+MD_HEADING_SIZES = {1: 16, 2: 14, 3: 13, 4: 12, 5: 11, 6: 11}
+
+SPACE_SM = 10
+SPACE_MD = 14
+POPUP_PAD_X = 22
+POPUP_PAD_Y = 18
+
+_FALLBACK_UI_FONTS = {'win32': 'Microsoft JhengHei UI', 'darwin': 'PingFang TC'}
+_MONO_FONTS = {'win32': 'Consolas', 'darwin': 'Menlo'}
+
+
+def get_ui_font_family() -> str:
+    """回傳 UI 字型家族：優先採用 Tk 系統預設字型，失敗時依平台退回 CJK 友善字型。"""
+    try:
+        return tkfont.nametofont('TkDefaultFont').actual()['family']
+    except (tk.TclError, RuntimeError, KeyError):
+        return _FALLBACK_UI_FONTS.get(sys.platform, 'Noto Sans CJK TC')
+
+
+def get_mono_font_family() -> str:
+    """回傳各平台的等寬字型（程式碼區塊用）。"""
+    return _MONO_FONTS.get(sys.platform, 'DejaVu Sans Mono')
 
 
 def compute_brightness(color: str | None) -> float | None:

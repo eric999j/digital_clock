@@ -4,7 +4,6 @@
 import logging
 import re
 import tkinter as tk
-import tkinter.font as tkfont
 import webbrowser
 from collections.abc import Callable, Sequence
 from tkinter import messagebox
@@ -16,7 +15,18 @@ from ui.theme_utils import (
     BUTTON_HOVER_BG,
     BUTTON_HOVER_FG,
     BUTTON_PRESSED_BG,
+    FONT_SIZE_BODY,
+    FONT_SIZE_CAPTION,
+    FONT_SIZE_ICON,
+    FONT_SIZE_TITLE,
+    MD_HEADING_SIZES,
+    POPUP_PAD_X,
+    POPUP_PAD_Y,
+    SPACE_MD,
+    SPACE_SM,
     compute_separator_color,
+    get_mono_font_family,
+    get_ui_font_family,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,18 +86,15 @@ def _configure_md_tags(
     link_color: str,
 ) -> None:
     """設置 Markdown 渲染所需的所有 tag。"""
-    text_widget.tag_configure('bold', font=(sys_font, 11, 'bold'))
-    text_widget.tag_configure('italic', font=(sys_font, 11, 'italic'))
-    text_widget.tag_configure('bold_italic', font=(sys_font, 11, 'bold italic'))
-    text_widget.tag_configure('h1', font=(sys_font, 16, 'bold'))
-    text_widget.tag_configure('h2', font=(sys_font, 14, 'bold'))
-    text_widget.tag_configure('h3', font=(sys_font, 13, 'bold'))
-    text_widget.tag_configure('h4', font=(sys_font, 12, 'bold'))
-    text_widget.tag_configure('h5', font=(sys_font, 11, 'bold'))
-    text_widget.tag_configure('h6', font=(sys_font, 11, 'bold italic'))
+    text_widget.tag_configure('bold', font=(sys_font, FONT_SIZE_BODY, 'bold'))
+    text_widget.tag_configure('italic', font=(sys_font, FONT_SIZE_BODY, 'italic'))
+    text_widget.tag_configure('bold_italic', font=(sys_font, FONT_SIZE_BODY, 'bold italic'))
+    for level, size in MD_HEADING_SIZES.items():
+        weight = 'bold italic' if level == 6 else 'bold'
+        text_widget.tag_configure(f'h{level}', font=(sys_font, size, weight))
     text_widget.tag_configure(
         'code',
-        font=('Courier New', 10),
+        font=(get_mono_font_family(), FONT_SIZE_CAPTION),
         background=_code_bg_color(actual_bg),
         foreground=actual_fg,
     )
@@ -139,12 +146,12 @@ def _insert_message(
     text_widget: tk.Text,
     message: str,
     link_color: str,
-    sys_font: str = "Microsoft JhengHei UI",
+    sys_font: str = "",
     actual_bg: str = "#ffffff",
     actual_fg: str = "#000000",
 ) -> None:
     """將訊息以 Markdown 格式插入 Text 元件，支援標題、清單、行內格式與超連結。"""
-    _configure_md_tags(text_widget, sys_font, actual_bg, actual_fg, link_color)
+    _configure_md_tags(text_widget, sys_font or get_ui_font_family(), actual_bg, actual_fg, link_color)
     lines = message.split('\n')
     for i, line in enumerate(lines):
         if i > 0:
@@ -230,7 +237,7 @@ def _themed_button(
         parent,
         text=text,
         width=8,
-        font=(sys_font, 10, weight),
+        font=(sys_font, FONT_SIZE_CAPTION, weight),
         relief='flat',
         borderwidth=1,
         cursor='hand2',
@@ -269,7 +276,7 @@ def _add_snooze_button(
     button = tk.Menubutton(
         parent,
         text="稍後提醒 ▾",
-        font=(sys_font, 10),
+        font=(sys_font, FONT_SIZE_CAPTION),
         relief='flat',
         borderwidth=1,
         cursor='hand2',
@@ -282,7 +289,7 @@ def _add_snooze_button(
         highlightbackground=BUTTON_PRESSED_BG,
     )
     menu = tk.Menu(
-        button, tearoff=0, font=(sys_font, 10),
+        button, tearoff=0, font=(sys_font, FONT_SIZE_CAPTION),
         bg=BUTTON_BG, fg=BUTTON_FG,
         activebackground=BUTTON_PRESSED_BG, activeforeground=BUTTON_FG,
     )
@@ -316,10 +323,7 @@ def show_reminder_popup_window(
         建立成功的 Toplevel；建立失敗時回傳 None。
     """
     # 系統字型
-    try:
-        sys_font = tkfont.nametofont("TkDefaultFont").actual()['family']
-    except Exception:
-        sys_font = "Microsoft JhengHei UI"
+    sys_font = get_ui_font_family()
 
     bg = theme['bg'] if theme else None
     fg = theme['fg'] if theme else None
@@ -344,7 +348,7 @@ def show_reminder_popup_window(
             popup.configure(bg=bg)
 
         # 外層容器
-        outer = tk.Frame(popup, padx=22, pady=18)
+        outer = tk.Frame(popup, padx=POPUP_PAD_X, pady=POPUP_PAD_Y)
         if bg:
             outer.configure(bg=bg)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -356,15 +360,15 @@ def show_reminder_popup_window(
         header.pack(fill=tk.X)
         tk.Label(
             header, text=icon_char,
-            font=(sys_font, 15), bg=actual_bg, fg=actual_fg,
+            font=(sys_font, FONT_SIZE_ICON), bg=actual_bg, fg=actual_fg,
         ).pack(side=tk.LEFT)
         tk.Label(
             header, text=f"  {title}",
-            font=(sys_font, 12, 'bold'), bg=actual_bg, fg=actual_fg,
+            font=(sys_font, FONT_SIZE_TITLE, 'bold'), bg=actual_bg, fg=actual_fg,
         ).pack(side=tk.LEFT)
 
         # ── 分隔線 ──
-        tk.Frame(outer, bg=sep_color, height=1).pack(fill=tk.X, pady=(10, 12))
+        tk.Frame(outer, bg=sep_color, height=1).pack(fill=tk.X, pady=(SPACE_SM, 12))
 
         # ── 訊息內容 ──
         if message:
@@ -378,7 +382,7 @@ def show_reminder_popup_window(
                 wrap=tk.WORD,
                 width=36,
                 height=display_lines,
-                font=(sys_font, 11),
+                font=(sys_font, FONT_SIZE_BODY),
                 borderwidth=0,
                 highlightthickness=0,
                 cursor="arrow",
@@ -401,7 +405,7 @@ def show_reminder_popup_window(
 
         # ── 按鈕列 ──
         btn_area = tk.Frame(outer, bg=actual_bg)
-        btn_area.pack(fill=tk.X, pady=(14, 0))
+        btn_area.pack(fill=tk.X, pady=(SPACE_MD, 0))
         btn = _themed_button(btn_area, ok_text, popup.destroy, actual_bg, actual_fg, sys_font, is_default=True)
         btn.pack(side=tk.RIGHT)
         if snooze_minutes and on_snooze:
@@ -427,10 +431,7 @@ def show_confirm_popup_window(
     no_text: str = "否",
 ) -> tk.Toplevel | None:
     """以主題樣式顯示確認對話框（非阻塞），點擊確認後執行 yes_callback。"""
-    try:
-        sys_font = tkfont.nametofont("TkDefaultFont").actual()['family']
-    except Exception:
-        sys_font = "Microsoft JhengHei UI"
+    sys_font = get_ui_font_family()
 
     bg = theme['bg'] if theme else None
     fg = theme['fg'] if theme else None
@@ -446,7 +447,7 @@ def show_confirm_popup_window(
         if bg:
             popup.configure(bg=bg)
 
-        outer = tk.Frame(popup, padx=22, pady=18)
+        outer = tk.Frame(popup, padx=POPUP_PAD_X, pady=POPUP_PAD_Y)
         if bg:
             outer.configure(bg=bg)
         outer.pack(fill=tk.BOTH, expand=True)
@@ -456,15 +457,17 @@ def show_confirm_popup_window(
         header = tk.Frame(outer, bg=actual_bg)
         header.pack(fill=tk.X)
         icon = "🗑" if "刪除" in title else "?"
-        tk.Label(header, text=icon, font=(sys_font, 15), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
-        tk.Label(header, text=f"  {title}", font=(sys_font, 12, 'bold'), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
+        tk.Label(header, text=icon, font=(sys_font, FONT_SIZE_ICON), bg=actual_bg, fg=actual_fg).pack(side=tk.LEFT)
+        tk.Label(
+            header, text=f"  {title}", font=(sys_font, FONT_SIZE_TITLE, 'bold'), bg=actual_bg, fg=actual_fg,
+        ).pack(side=tk.LEFT)
 
-        tk.Frame(outer, bg=sep_color, height=1).pack(fill=tk.X, pady=(10, 12))
+        tk.Frame(outer, bg=sep_color, height=1).pack(fill=tk.X, pady=(SPACE_SM, 12))
 
         if message:
             text_widget = tk.Text(
                 outer, wrap=tk.WORD, width=36, height=1,
-                font=(sys_font, 11), borderwidth=0, highlightthickness=0,
+                font=(sys_font, FONT_SIZE_BODY), borderwidth=0, highlightthickness=0,
                 cursor="arrow", bg=actual_bg, fg=actual_fg,
             )
             text_widget.pack(fill=tk.BOTH, expand=True)
@@ -474,7 +477,7 @@ def show_confirm_popup_window(
             text_widget.configure(insertwidth=0)
 
         btn_area = tk.Frame(outer, bg=actual_bg)
-        btn_area.pack(fill=tk.X, pady=(14, 0))
+        btn_area.pack(fill=tk.X, pady=(SPACE_MD, 0))
 
         def on_yes() -> None:
             popup.destroy()
@@ -505,7 +508,7 @@ def _show_rich_popup(message: str) -> None:
     frame.pack(fill=tk.BOTH, expand=True)
 
     text_widget = tk.Text(frame, wrap=tk.WORD, width=50, height=8,
-                          font=("Microsoft JhengHei UI", 11),
+                          font=(get_ui_font_family(), FONT_SIZE_BODY),
                           borderwidth=0, highlightthickness=0,
                           background=frame.cget("background"),
                           cursor="arrow")

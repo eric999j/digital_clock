@@ -15,6 +15,7 @@ from core.clock_logic import ClockLogic
 from core.events import Events
 from core.observer import Observer
 from services.countdown_service import CountdownService
+from ui.dpi import get_scale_factor, scale_px
 from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
@@ -30,6 +31,7 @@ class DigitalClock(Observer):
         """初始化數位時鐘 UI。"""
         self.container = container
         self.root = tk.Tk()
+        self._ui_scale: float = get_scale_factor(self.root)
         self.logic = ClockLogic(self, self.container.get('config_manager'))
         self.logic.add_observer(self)  # 註冊為 observer
         self.config = self.logic.get_config()
@@ -45,8 +47,8 @@ class DigitalClock(Observer):
 
         self.WIDTH_CALC_TEXTS = behavior_conf['width_calc_text']
         self.WIDTH_SAFETY_FACTOR = behavior_conf['width_safety_factor']
-        self.WIDTH_PADDING = behavior_conf['width_padding']
-        self.MIN_WIDTH = behavior_conf['min_width']
+        self.WIDTH_PADDING = self._px(behavior_conf['width_padding'])
+        self.MIN_WIDTH = self._px(behavior_conf['min_width'])
         animation_conf = behavior_conf.get('animation', {})
         self.ANIMATION_DURATION_MS = animation_conf.get('duration_ms', 300)
         self.ANIMATION_FPS = animation_conf.get('fps', 60)
@@ -139,6 +141,10 @@ class DigitalClock(Observer):
         except Exception as e:
             messagebox.showerror("初始化錯誤", f"無法啟動時鐘：{e}")
             raise
+
+    def _px(self, value: int | float) -> int:
+        """將 96 DPI 基準的像素值換算為目前螢幕的實際像素。"""
+        return scale_px(value, getattr(self, '_ui_scale', 1.0))
 
     def _setup_event_handlers(self) -> None:
         """設定事件處理映射。"""
@@ -730,7 +736,7 @@ class DigitalClock(Observer):
             # 預設高度為行高的 1.3 倍，確保上下有空間
             recommended_height = int(line_height * 1.3)
             # 最小高度設為 70 (原始預設值) 或 line_height + padding
-            new_height = max(recommended_height, 70)
+            new_height = max(recommended_height, self._px(70))
             self.config['window']['height'] = new_height
         except Exception:
             # 若 metrics 失敗，使用舊方法或不變動
@@ -767,7 +773,7 @@ class DigitalClock(Observer):
 
         width = max(1, self.canvas.winfo_width())
         height = max(1, self.canvas.winfo_height())
-        radius = min(self.CORNER_RADIUS, width // 2, height // 2)
+        radius = min(self._px(self.CORNER_RADIUS), width // 2, height // 2)
         self.canvas.coords(
             self._background_item,
             *self._rounded_rect_points(0, 0, width, height, radius),
@@ -909,7 +915,7 @@ class DigitalClock(Observer):
             self.canvas.config(bg=self.transparent_color)
             width = max(1, self.root.winfo_width())
             height = max(1, self.root.winfo_height())
-            radius = min(self.CORNER_RADIUS, width // 2, height // 2)
+            radius = min(self._px(self.CORNER_RADIUS), width // 2, height // 2)
             self._background_item = self._draw_rounded_rect(
                 0, 0, width, height, radius, fill=bg_color, outline=bg_color
             )
@@ -1335,7 +1341,7 @@ class DigitalClock(Observer):
         """資訊列所需高度；沒有任何資訊時為 0，視窗維持原本大小。"""
         if not self._info_lines:
             return 0
-        return len(self._info_lines) * self._info_line_px + self.INFO_BAND_PADDING
+        return len(self._info_lines) * self._info_line_px + self._px(self.INFO_BAND_PADDING)
 
     def _compose_info_lines(self, now: datetime | None = None) -> list[str]:
         """組合資訊列文字：倒數計時（若有）在前，接著是各已選時區。"""

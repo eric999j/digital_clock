@@ -4,6 +4,7 @@ from pathlib import Path
 
 from core.container import ServiceContainer
 from services.config_service import ConfigManager
+from ui.dpi import enable_dpi_awareness
 from ui.main_window import DigitalClock
 
 
@@ -32,6 +33,7 @@ def _configure_logging() -> None:
 
 if __name__ == '__main__':
     _configure_logging()
+    enable_dpi_awareness()  # 必須早於任何 tk.Tk()
 
     container = ServiceContainer()
     config_manager = ConfigManager()
