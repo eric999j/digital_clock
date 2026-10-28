@@ -95,11 +95,8 @@ class TestContextMenuIntegration(unittest.TestCase):
             self.assertEqual(str(sub.cget("bg")), theme['bg'])
             self.assertEqual(str(sub.cget("fg")), theme['fg'])
 
-    def test_pomodoro_status_entry_still_updates_in_nested_menu(self):
-        clock = self.clock
-        clock.update_pomodoro_display("FOCUS", 90)
-        self.assertEqual(clock.context_menu.pomodoro_menu.entrycget(0, "label"), "狀態: [專注 01:30]")
-        clock.update_pomodoro_display("IDLE", None)
+    def test_pomodoro_menu_has_no_status_entry(self):
+        self.assertEqual(self._labels(self.clock.context_menu.pomodoro_menu), ["開始專注", "停止"])
 
     def test_top_level_menu_order_and_reminder_placement(self):
         labels = self._labels(self.clock.context_menu)
@@ -110,6 +107,81 @@ class TestContextMenuIntegration(unittest.TestCase):
         self.assertNotEqual(labels[0], "---")
         self.assertNotEqual(labels[-1], "---")
         self.assertFalse(any(a == b == "---" for a, b in zip(labels, labels[1:], strict=False)))
+
+    def _walk(self, menu, path=()):
+        """走訪選單樹，產生 (路徑, 選單, 索引, 項目型別)。"""
+        end = menu.index("end")
+        if end is None:
+            return
+        for i in range(end + 1):
+            kind = menu.type(i)
+            if kind == "separator":
+                continue
+            label = menu.entrycget(i, "label")
+            yield path + (label,), menu, i, kind
+            if kind == "cascade":
+                yield from self._walk(menu.nametowidget(menu.entrycget(i, "menu")), path + (label,))
+
+    def _assert_all_entries_clickable(self):
+        for path, menu, index, kind in self._walk(self.clock.context_menu):
+            with self.subTest(entry=" > ".join(path)):
+                command = str(menu.entrycget(index, "command")) if kind != "cascade" else ""
+                if str(menu.entrycget(index, "state")) == "disabled":
+                    # 停用項目只能是無動作的提示文字（如「無提醒事項」），不可是被誤停用的功能
+                    self.assertFalse(command, "有動作的項目不可被停用")
+                elif kind == "cascade":
+                    self.assertTrue(menu.entrycget(index, "menu"))
+                else:
+                    self.assertTrue(command)
+
+    def test_every_menu_entry_is_clickable_when_idle(self):
+        self.clock.context_menu.countdown_menu.update_menu()
+        self._assert_all_entries_clickable()
+
+    def test_every_menu_entry_is_clickable_during_countdown_and_pomodoro(self):
+        clock = self.clock
+        clock.logic.start_countdown(300)
+        clock.logic.pomodoro.start_focus()
+        try:
+            clock.context_menu.countdown_menu.update_menu()
+            self._assert_all_entries_clickable()
+        finally:
+            clock.logic.cancel_countdown()
+            clock.logic.pomodoro.stop()
+
+    def test_pomodoro_focus_is_shown_below_the_clock(self):
+        clock = self.clock
+        clock.logic.pomodoro.start_focus()
+        try:
+            lines = clock._compose_info_lines()
+            self.assertIn("專注 25:00", lines[0])
+            self.assertEqual(clock._info_lines[0], lines[0])
+        finally:
+            clock.logic.pomodoro.stop()
+        self.assertFalse(any(line.startswith("專注") for line in clock._compose_info_lines()))
+
+    def test_window_is_not_resized_while_menu_is_open(self):
+        clock = self.clock
+        lines_before = list(clock._info_lines)
+
+        clock._context_menu_open = True
+        try:
+            clock._set_info_lines([*lines_before, "新增一行"])
+            self.assertEqual(clock._info_lines, lines_before)
+        finally:
+            clock._context_menu_open = False
+
+    def test_deferred_info_lines_are_applied_after_menu_closes(self):
+        clock = self.clock
+        with patch.object(
+            clock.context_menu, "tk_popup", side_effect=lambda *a: clock.logic.pomodoro.start_focus(),
+        ):
+            clock._show_context_menu(SimpleNamespace(x_root=0, y_root=0))
+        try:
+            self.assertFalse(clock._context_menu_open)
+            self.assertTrue(any(line.startswith("專注") for line in clock._info_lines))
+        finally:
+            clock.logic.pomodoro.stop()
 
 
 if __name__ == "__main__":

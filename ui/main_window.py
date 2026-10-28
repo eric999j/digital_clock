@@ -85,7 +85,6 @@ class DigitalClock(Observer):
         self.alpha_unfocused_var = tk.DoubleVar(value=self.config['window']['alpha_unfocused'])
         self.corner_radius_var = tk.IntVar(value=app_conf['corner_radius'])
         self.drag_offset: dict[str, int] = {'x': 0, 'y': 0}
-        self.pomodoro_display_text: str = ""  # 用於顯示番茄鐘狀態的文字
         # 當滑鼠移至時間標籤上方時，暫停時間更新並顯示日期
         self._hovering_time: bool = False
 
@@ -563,25 +562,19 @@ class DigitalClock(Observer):
             phase: 番茄鐘階段
             remaining: 剩餘秒數
         """
-        phase_map = {"FOCUS": "專注", "SHORT_BREAK": "短休息", "LONG_BREAK": "長休息", "IDLE": "就緒"}
-        phase_text = phase_map.get(phase, phase)
+        phase_map = {"FOCUS": "專注", "SHORT_BREAK": "短休息", "LONG_BREAK": "長休息"}
+        is_phase_change = remaining is None
 
-        if phase == "IDLE":
-            self.pomodoro_display_text = f"[{phase_text}]"
-        elif remaining is None:
-            self.pomodoro_display_text = f"[{phase_text}]"
+        if phase not in phase_map:
+            self._pomodoro_line = ""
         else:
-            m = remaining // 60
-            s = remaining % 60
-            self.pomodoro_display_text = f"[{phase_text} {m:02}:{s:02}]"
+            seconds_left = self.logic.pomodoro.remaining_seconds if remaining is None else remaining
+            minutes, seconds = divmod(max(0, seconds_left), 60)
+            self._pomodoro_line = f"{phase_map[phase]} {minutes:02}:{seconds:02}"
 
-        # 更新番茄鐘子選單的第一個項目（狀態顯示）
-        if hasattr(self, 'pomodoro_menu'):
-            try:
-                # 更新 label，並確保 accelerator 為空
-                self.pomodoro_menu.entryconfigure(0, label=f"狀態: {self.pomodoro_display_text}", accelerator="")
-            except Exception as e:
-                logger.warning("Error updating pomodoro menu: %s", e)
+        if is_phase_change:
+            # 階段變更時立即更新時鐘下方資訊列；一般 tick 由 update_time 每秒刷新
+            self._refresh_info_lines()
 
     def _update_menu_colors(self, menu: Menu | None = None) -> None:
         """
@@ -688,11 +681,15 @@ class DigitalClock(Observer):
             self._update_vacation_menu()
             self.context_menu.countdown_menu.update_menu()
             self.context_menu.timezone_menu.update_menu()
+            self._context_menu_open = True
             self.context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
             logger.error("Error showing context menu: %s", e)
         finally:
             self.context_menu.grab_release()
+            self._context_menu_open = False
+            # 選單開啟期間被延後的資訊列變更，在此補套用
+            self._refresh_info_lines()
 
     def _adjust_window_width(self, font_family: str | None = None, is_initial: bool = False) -> None:
         """
@@ -1323,7 +1320,8 @@ class DigitalClock(Observer):
     # --- 時鐘下方資訊列（倒數計時、多時區）---
 
     INFO_BAND_PADDING = 6
-
+    _context_menu_open: bool = False
+    _pomodoro_line: str = ""
     def _update_info_font(self) -> None:
         """依目前字型與大小更新資訊列字型與行高（字體約為時鐘的 1/4）。"""
         family = self.config['appearance']['font_family']
@@ -1344,8 +1342,10 @@ class DigitalClock(Observer):
         return len(self._info_lines) * self._info_line_px + self._px(self.INFO_BAND_PADDING)
 
     def _compose_info_lines(self, now: datetime | None = None) -> list[str]:
-        """組合資訊列文字：倒數計時（若有）在前，接著是各已選時區。"""
+        """組合資訊列文字：番茄鐘（若在執行）、倒數計時（若有）在前，接著是各已選時區。"""
         lines: list[str] = []
+        if self._pomodoro_line:
+            lines.append(self._pomodoro_line)
         countdown = self.logic.countdown_service
         if countdown.is_active:
             name = f"{countdown.label} " if countdown.label else ""
@@ -1375,7 +1375,9 @@ class DigitalClock(Observer):
         """
         if lines == self._info_lines:
             return
-
+        if self._context_menu_open and len(lines) != len(self._info_lines):
+            # 選單開啟時變更視窗高度會讓選單跳開，選單關閉後再套用
+            return
         old_band_height = self._info_band_height()
         self._info_lines = list(lines)
         if self._info_band_height() != old_band_height:

@@ -48,8 +48,6 @@ class ContextMenu(Menu):
 
         # 番茄鐘
         self.pomodoro_menu = Menu(productivity_menu, tearoff=0)
-        self.pomodoro_menu.add_command(label="狀態: [就緒]", state="normal")
-        self.pomodoro_menu.add_separator()
         self.pomodoro_menu.add_command(label="開始專注", command=lambda: self.logic.pomodoro.start_focus())
         self.pomodoro_menu.add_command(label="停止", command=lambda: self.logic.pomodoro.stop())
         productivity_menu.add_cascade(label="番茄鐘", menu=self.pomodoro_menu)
