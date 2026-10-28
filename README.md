@@ -1,311 +1,228 @@
-# 桌面數位時鐘 (Digital Clock) - 專案說明
+# 桌面數位時鐘 (Digital Clock)
 
 ## 緣起
-當應用程式最大化時，自動隱藏的工具列雖然釋放了螢幕空間，卻也讓我們無法隨時看到時間。此專案旨在解決這個問題，提供一個簡潔、不干擾且永遠在最上層的桌面時鐘。
+當應用程式最大化時，自動隱藏的工具列雖然釋放了螢幕空間，卻也讓我們無法隨時看到時間。此專案旨在解決這個問題，提供一個簡潔、不干擾且永遠在最上層的桌面時鐘，並整合番茄鐘、倒數計時、提醒、整點啟動等小工具。
 
-## 核心需求
-- **互動性**：可自由拖曳、雙擊關閉、預設半透明，滑鼠聚焦時恢復不透明。
-- **智慧隱藏**：進行螢幕截圖時，時鐘自動隱藏，不被攝入畫面。
-- **背景執行**：更改副檔名為 `.pyw` 即可在 Windows 上無主控台視窗背景執行。
-- **無干擾**：程式圖示不顯示在 Windows 工作列上。
-- **不跑出螢幕**：拖曳時視窗會被限制在可視範圍（支援 Windows 多螢幕）；啟動時若儲存的位置已不在螢幕內，會自動移回。
-- **稍後提醒**：提醒彈窗左下角的「稍後提醒 ▾」可延後 5 分鐘、10 分鐘、30 分鐘或 1 小時再提醒。
-- **倒數計時**：右鍵選單「效率提升 › 倒數計時」提供 1/3/5/10/15/30 分鐘快速倒數與自訂時間，可暫停、繼續、取消；剩餘時間顯示在時鐘下方，結束時響鈴並彈窗。
-- **多時區**：右鍵選單「時鐘設定 › 多時區」可勾選最多 3 個時區（東京、倫敦、紐約等），時間顯示在時鐘下方，跨日以 `(+1)`、`(-1)` 標示。Windows 需要 `tzdata` 套件（已列入 `requirements.txt`）。
-
-## 跨平台雙擊啟動
-
-本專案已提供各平台的雙擊啟動檔，會自動完成以下流程：
-1. 建立 `.venv` 虛擬環境（若尚未建立）
-2. 安裝 `requirements.txt` 依賴
-3. 啟動 `main.py`
-
-### Windows
-- 直接雙擊 `start_windows.bat`
-
-### macOS
-1. 首次在 Terminal 執行：`chmod +x start_macos.command`
-2. 之後可在 Finder 直接雙擊 `start_macos.command`
-
-### Linux
-1. 首次在 Terminal 執行：`chmod +x start_linux.sh`
-2. 之後可在檔案管理器雙擊 `start_linux.sh`（若系統詢問，選擇 Run）
-
-## 正式打包版本（Release Build）
-
-本專案提供三平台打包腳本，使用 PyInstaller 產生單一執行檔（onefile）。
-
-### Windows 打包
-- 雙擊 `package_windows.bat`
-- 產出檔案：`dist/DigitalClock.exe`
-
-### macOS 打包
-1. 首次執行授權：`chmod +x package_macos.sh`
-2. 執行：`./package_macos.sh`
-3. 產出檔案：`dist/DigitalClock`
-
-### Linux 打包
-1. 首次執行授權：`chmod +x package_linux.sh`
-2. 執行：`./package_linux.sh`
-3. 產出檔案：`dist/DigitalClock`
-
-### 注意事項
-- 建議在目標平台各自打包（Windows 產 Windows、macOS 產 macOS、Linux 產 Linux）。
-- 若要分發給 macOS 使用者，通常還需要額外做簽章與公證。
+- 環境：Python 3.13+（tkinter）
+- 依賴：`pynput`（全域鍵盤監聽）；Windows 另需 `tzdata`（多時區，已列入 `requirements.txt`）
 
 ---
 
-## 架構設計（2025年重構版 v2.0）
+## 功能總覽
 
-本專案採用多種設計模式，實現了高度模組化與可維護性的架構。
+### 時鐘本體
+- **永遠置頂、半透明**：聚焦時不透明（預設 100%），失去焦點時降為預設 50%；兩種透明度皆可在選單調整（100/90/80/70/60%）。
+- **可自由拖曳、雙擊關閉**；視窗被限制在可視範圍內（支援 Windows 多螢幕），啟動時若儲存的位置已不在螢幕內會自動移回。
+- **滑鼠懸停顯示日期**：游標移到時間上時暫時改顯示日期（含星期），並自動縮小字級避免超出視窗。
+- **字元級時間動畫**：時間切換時以字元垂直過渡呈現；動畫期高更新率、閒置期降頻，兼顧流暢與資源。
+- **外觀可調**：8 種配色（護眼綠、紳士藍、暮色灰、大地棕、琥珀色、經典焦糖、深邃胡桃、柔和奶茶）、字型、字型大小（32–72）、12/24 小時制、完整/簡短日期、圓角（0/12/20/30/40）。
+- **高 DPI 支援（Windows）**：啟動時宣告 DPI 感知，文字不會被系統放大而模糊；最小寬度、內距與圓角會依螢幕縮放。
+- **不顯示在工作列**（Windows）；更改副檔名為 `.pyw` 可無主控台視窗背景執行。
 
-### 系統架構圖
+### 時鐘下方資訊列
+番茄鐘、倒數計時、多時區的資訊集中顯示在時鐘下方，由上而下依序為：
+
+| 項目 | 範例 | 說明 |
+|------|------|------|
+| 番茄鐘 | `專注 24:16`、`短休息 04:30 (暫停)` | 專注/短休息/長休息階段與剩餘時間，暫停時加註 |
+| 倒數計時 | `泡麵 倒數 02:54 (暫停)` | 名稱（可空白）與剩餘時間 |
+| 多時區 | `東京 00:05 (+1)` | 最多 3 個，跨日以 `(+1)`、`(-1)` 標示 |
+
+沒有任何項目時視窗維持原本大小；文字過寬時自動縮小字級。
+
+### 效率工具
+- **番茄鐘**：預設專注 25 分、短休息 5 分、長休息 15 分，每 4 個專注循環後長休息（可在設定檔 `pomodoro` 調整）。右鍵選單「效率提升 › 番茄鐘」可開始專注、暫停/繼續、取消番茄鐘；階段結束時彈窗提醒並自動進入下一階段。剩餘時間以截止時間計算，主迴圈延遲或漏 tick 不會造成誤差。
+- **倒數計時**：「效率提升 › 倒數計時」提供 1/3/5/10/15/30 分鐘快速倒數與自訂（含名稱，上限 24 小時），可暫停、繼續、取消；結束時響鈴並彈窗。
+- **多時區**：「時鐘設定 › 多時區」可從東京、首爾、新加坡、杜拜、巴黎、倫敦、UTC、紐約、芝加哥、洛杉磯、雪梨中勾選最多 3 個。
+
+### 提醒
+- **單次與週期提醒**：可指定日期時間，或每週固定星期與時間；提供「上班日」快捷勾選，單次提醒預設為目前時間 +5 分鐘。
+- **標題與訊息**：彈窗訊息支援 Markdown 行內語法（粗體、斜體、`code`、連結）與可點擊網址（僅允許 http/https）。
+- **稍後提醒**：彈窗左下角「稍後提醒 ▾」可延後 5 分鐘、10 分鐘、30 分鐘或 1 小時。
+- **編輯、刪除、暫停**：由「提醒」選單管理；已過期的單次提醒於啟動時與檢查時自動清除。
+- **非阻塞彈窗**：提醒以主 UI 執行緒中的視窗顯示，不會凍結時鐘，並限制同時堆疊數量（5 個）。
+
+### 整點啟動
+- 規則可為「網頁」或「程式」（程式路徑、參數、起始目錄），設定起訖整點時段（含邊界），每條規則可自訂星期；預設僅工作日觸發。
+- 同一小時同一目標只觸發一次；程式一律不經 shell、不等待結束；網頁僅允許 http/https。
+- 設定視窗可「立即測試」、編輯規則，並可**匯入 Windows 工作排程器 XML**（每日/每週觸發 + 啟動程式，自動轉為含星期條件的規則，不支援的設定列為警告）。
+- 可獨立暫停/啟動。
+
+### 休假模式
+- 一鍵「立即開始休假 / 結束休假」：進入休假時停止番茄鐘並暫停提醒與整點啟動，結束後恢復切換前的暫停狀態。
+- **休假排程**：設定日期範圍與備註，到期自動進入/離開休假；已過期或無效的排程自動清除。
+
+### 智慧截圖躲避
+以 `pynput` 在背景執行緒監聽 PrtScn 或 `Win+Shift+S`，偵測到截圖時自動隱藏（預設 2 秒），避免被攝入畫面；背景事件透過 `root.after` 安全交回主 UI 執行緒。
+
+### 穩定性與健壯性
+- **右鍵選單穩定**：選單開啟期間不會修改選單內容或視窗大小；資訊列每秒更新也不會重設正在使用的字型（Windows 上會讓選單被關閉）。
+- **設定檔**：位於 `~/.digital_clock/config.json`；預設值遞迴合併、損毀時回退預設值、變更延遲寫入（防抖）、關閉時沖刷、以原子替換避免寫入中斷造成損毀。
+- **日誌**：`~/.digital_clock/digital_clock.log`，單檔 5 MB、保留 3 份輪替。
+- **效能監控**：可在設定檔 `system.performance_monitor` 啟用，定期輸出渲染與邏輯迴圈統計。
+
+---
+
+## 右鍵選單
+
+```
+休假模式 ›  立即開始休假 / 新增休假排程… / 既有排程
+提醒 ›      新增提醒… / 暫停 / 既有提醒（編輯、刪除）
+整點啟動 ›  設定 / 暫停
+效率提升 ›
+    番茄鐘 ›    開始專注 / 暫停（繼續）/ 取消番茄鐘
+    倒數計時 ›  暫停（繼續）/ 取消倒數 / 1·3·5·10·15·30 分鐘 / 自訂…
+時鐘設定 ›  多時區 / 字型 / 字型大小 / 配色 / 時間格式 / 日期格式 / 透明度 / 圓角
+離開
+```
+
+---
+
+## 啟動
+
+### 跨平台雙擊啟動
+啟動檔會自動建立 `.venv`、安裝 `requirements.txt` 並啟動 `main.py`。
+
+| 平台 | 做法 |
+|------|------|
+| Windows | 雙擊 `start_windows.bat` |
+| macOS | 首次執行 `chmod +x start_macos.command`，之後在 Finder 雙擊 |
+| Linux | 首次執行 `chmod +x start_linux.sh`，之後在檔案管理器雙擊（詢問時選 Run） |
+
+### 手動執行
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+---
+
+## 正式打包（Release Build）
+
+使用 PyInstaller 產生單一執行檔（onefile）。
+
+| 平台 | 指令 | 產出 |
+|------|------|------|
+| Windows | 雙擊 `package_windows.bat` | `dist/DigitalClock.exe` |
+| macOS | `chmod +x package_macos.sh && ./package_macos.sh` | `dist/DigitalClock` |
+| Linux | `chmod +x package_linux.sh && ./package_linux.sh` | `dist/DigitalClock` |
+
+注意事項：
+- 建議在目標平台各自打包。
+- onefile 每次啟動都需解壓縮，啟動較慢；分發給 macOS 使用者通常還需簽章與公證，Windows 未簽署的執行檔可能被 SmartScreen 警告。
+
+---
+
+## 架構設計
+
+分層設計，UI 與業務邏輯透過 **Observer** 解耦：UI 呼叫 `ClockLogic`，`ClockLogic` 以事件通知 UI。所有 UI 操作都在 tkinter 主執行緒。
 
 ```mermaid
 flowchart TB
-    subgraph UI_Layer["視圖層 (UI Layer)"]
+    MAIN["main.py<br/>啟動 / DPI 宣告 / DI Container"]
+
+    subgraph UI_Layer["UI 層 (ui/)"]
         direction LR
-        UI["ui.py<br/>主視窗與互動"]
-        RW["reminder_window.py<br/>提醒視窗"]
+        WINDOW["main_window.py<br/>DigitalClock (Observer)"]
+        MENUS["menus/<br/>右鍵選單"]
+        DIALOGS["設定視窗與彈窗<br/>reminder / hourly_web / vacation / countdown / popup_utils"]
     end
 
-    subgraph Logic_Layer["業務邏輯層 (Logic Layer)"]
+    subgraph Core_Layer["核心層 (core/)"]
         direction LR
-        CL["clock_logic.py<br/>核心邏輯"]
-        PS["pomodoro_service.py<br/>番茄鐘服務"]
-    end
-
-    subgraph Pattern_Layer["設計模式層 (Pattern Layer)"]
-        direction LR
-        OB["observer.py<br/>觀察者模式"]
-        CMD["command.py<br/>命令模式"]
-        STR["strategy.py<br/>策略模式"]
+        LOGIC["clock_logic.py<br/>ClockLogic (Mediator)"]
         EVT["events.py<br/>事件常數"]
+        OBS["observer.py<br/>Observer 介面"]
     end
 
-    subgraph Config_Layer["配置層 (Config Layer)"]
-        CM["config_manager.py<br/>設定管理 (Singleton)"]
+    subgraph Service_Layer["服務層 (services/)"]
+        direction LR
+        POMO["pomodoro / countdown"]
+        REMS["reminder / hourly_web / vacation_schedule"]
+        MISC["pause_manager / timezone / keyboard"]
+        CFG["config_service<br/>ConfigManager (Singleton)"]
     end
 
-    UI -.->|觀察| CL
-    UI --> RW
-    CL --> PS
-    CL --> CM
-    CL -.->|使用| OB & CMD & STR & EVT
+    STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 番茄鐘 / 休假排程"]
+
+    MAIN --> WINDOW
+    WINDOW --> MENUS
+    WINDOW --> DIALOGS
+    WINDOW -->|呼叫| LOGIC
+    LOGIC -.->|事件通知| WINDOW
+    LOGIC --> POMO
+    LOGIC --> REMS
+    LOGIC --> MISC
+    REMS --> STR
+    REMS --> CFG
 ```
 
-### 模組職責說明
+### 目錄結構
 
-| 模組 | 職責 |
-|------|------|
-| `main.py` | **程式進入點**：啟動應用程式 |
-| `ui.py` | **視圖層**：管理主視窗、時間顯示、右鍵選單、拖曳、主題切換等使用者互動 |
-| `reminder_window.py` | **提醒視窗**：獨立的提醒設定 UI 元件，支援單次與週期性提醒 |
-| `clock_logic.py` | **核心邏輯**：業務邏輯層，負責事件通知、狀態管理、鍵盤監聽與協調各服務 |
-| `pomodoro_service.py` | **番茄鐘服務**：獨立的計時引擎，管理專注/休息階段與倒數計時 |
-| `config_manager.py` | **設定管理**：單例模式，集中處理 JSON 設定檔的載入與儲存 |
-| `observer.py` | **觀察者基類**：定義 `Observer` 介面，供 UI 訂閱業務邏輯事件 |
-| `command.py` | **命令模式**：封裝操作命令，支援提醒與番茄鐘操作的統一呼叫 |
-| `strategy.py` | **策略模式**：實現提醒檢查與番茄鐘階段切換的可替換邏輯 |
-| `events.py` | **事件常數**：統一管理所有事件名稱，消除 Magic String |
-
-### 類別關係圖
-
-```mermaid
-classDiagram
-    direction TB
-
-    class DigitalClock {
-        -root: Tk
-        -logic: ClockLogic
-        -canvas: Canvas
-        -label: Label
-        -context_menu: Menu
-        +update(event, *args)
-        +update_time()
-        +apply_theme(theme_key)
-        +run()
-    }
-
-    class ClockLogic {
-        -ui: DigitalClock
-        -config: Dict
-        -pomodoro: PomodoroService
-        -config_manager: ConfigManager
-        -_observers: List
-        +start()
-        +on_close()
-        +add_observer(observer)
-        +notify_observers(event)
-        +add_reminder(time_data, message, weekdays)
-        +delete_reminder(reminder)
-    }
-
-    class PomodoroService {
-        -config: Dict
-        -phase: str
-        -remaining_seconds: int
-        +start_focus()
-        +start_break()
-        +tick()
-        +stop()
-    }
-
-    class ReminderWindow {
-        -callback: Callable
-        -theme: Dict
-        -reminder_to_edit: Dict
-        +on_submit()
-    }
-
-    class Observer {
-        <<interface>>
-        +update(event, *args, **kwargs)*
-    }
-
-    class ConfigManager {
-        <<singleton>>
-        -_instance: ConfigManager
-        +load_config() Dict
-        +save_config(config)
-    }
-
-    class ReminderStrategy {
-        +check(reminders, now) List
-    }
-
-    class PomodoroStrategy {
-        +next_phase(phase, cycle, config) str
-    }
-
-    DigitalClock ..|> Observer : implements
-    DigitalClock --> ClockLogic : uses
-    ClockLogic --> PomodoroService : uses
-    ClockLogic --> ConfigManager : uses
-    ClockLogic --> ReminderStrategy : uses
-    ClockLogic --> PomodoroStrategy : uses
-    ClockLogic --> Observer : notifies
-    DigitalClock ..> ReminderWindow : creates
 ```
+digital_clock/
+├── main.py                      # 進入點：日誌、DPI 宣告、建立 Container 並啟動
+├── core/
+│   ├── clock_logic.py           # ClockLogic：協調各服務、事件通知、延遲儲存
+│   ├── events.py                # Events 事件名稱常數
+│   ├── observer.py              # Observer 抽象介面
+│   ├── container.py             # ServiceContainer（DI）
+│   ├── launch_rules.py          # 整點啟動規則共用邏輯
+│   ├── program_launcher.py      # 程式啟動（不經 shell、不等待）
+│   ├── task_xml_importer.py     # 工作排程器 XML 匯入
+│   └── url_validator.py         # URL 安全驗證（僅 http/https）
+├── services/
+│   ├── config_service.py        # ConfigManager（Singleton）
+│   ├── pomodoro_service.py      # 番茄鐘引擎（含暫停）
+│   ├── countdown_service.py     # 倒數計時引擎
+│   ├── reminder_service.py      # 單次/週期提醒、稍後提醒
+│   ├── hourly_web_service.py    # 整點啟動（網頁/程式）
+│   ├── vacation_schedule_service.py  # 休假排程
+│   ├── pause_manager.py         # 提醒/整點啟動/休假暫停狀態
+│   ├── timezone_service.py      # 多時區
+│   └── keyboard_service.py      # 截圖快捷鍵監聽
+├── strategies/                  # BaseStrategy 及各可替換演算法
+├── ui/
+│   ├── main_window.py           # DigitalClock 主視窗
+│   ├── popup_utils.py           # 主題化彈窗（含 Markdown 渲染）
+│   ├── theme_utils.py           # 色彩計算、ttk 樣式、設計 token
+│   ├── dpi.py                   # 高 DPI 支援
+│   ├── window_bounds.py         # 視窗位置限制
+│   ├── *_window.py              # 提醒/整點啟動/休假排程/倒數 設定視窗
+│   └── menus/                   # 右鍵選單元件
+├── tests/                       # unittest
+├── package_*.{bat,sh}           # 各平台打包腳本
+└── start_*.{bat,sh,command}     # 各平台雙擊啟動檔
+```
+
+### 設計模式
+
+| 模式 | 位置 | 說明 |
+|------|------|------|
+| Observer | `core/observer.py` | `DigitalClock` 實作 `Observer`，訂閱 `ClockLogic` 以 `Events` 常數發出的事件 |
+| Mediator | `core/clock_logic.py` | `ClockLogic` 協調各服務，服務透過 `notify_callback` 回報 |
+| Strategy | `strategies/` | 提醒、整點啟動、番茄鐘階段、休假排程的判斷邏輯可替換，須繼承 `BaseStrategy` |
+| Singleton | `services/config_service.py` | `ConfigManager` 確保設定管理器唯一 |
+| DI Container | `core/container.py` | 以名稱註冊/取得服務 |
+
+### 程式碼慣例
+- 絕對 import；snake_case 方法、PascalCase 類別、UPPER_CASE 常數；完整 type hints；Google-style 繁體中文 docstring。
+- 事件名稱一律使用 `Events` 常數，不使用 magic string；日誌使用 `logging`，不使用 `print`。
+- 所有彈窗走 `popup_utils` / `theme_utils`（`themed_error`、`themed_confirm`），不直接使用 `tkinter.messagebox`，以確保主題一致。
 
 ---
 
-## 核心特色
+## 開發
 
-### 1. 置頂顯示與透明度
-- **永遠置頂**：`self.root.attributes('-topmost', True)` 確保時鐘永遠顯示在所有視窗之上。
-- **動態透明**：視窗獲得焦點時透明度設為 1.0，失去焦點時設為 0.5，實現淡入淡出效果。
-- **實作位置**：`ui.py` 的 `_setup_window()` 與 `_bind_events()` 方法。
-
-### 2. 智慧截圖躲避
-- **全域鍵盤監聽**：使用 `pynput` 在背景執行緒監聽按鍵。
-- **組合鍵偵測**：檢測 PrtScn 或 `Win+Shift+S` 組合鍵。
-- **安全隱藏與恢復**：偵測到截圖操作時自動隱藏 2 秒，避開截圖。
-- **實作位置**：`clock_logic.py` 的 `_start_keyboard_listener()`、`_on_key_press()` 方法。
-
-### 3. 互動操作
-- **拖曳移動**：`<Button-1>` 觸發 `_start_drag`，`<B1-Motion>` 觸發 `_drag`。
-- **雙擊關閉**：`<Double-Button-1>` 綁定 `self.logic.on_close()`。
-- **實作位置**：`ui.py` 的 `_start_drag()` 與 `_drag()` 方法。
-
-### 4. 視覺設計
-- **圓角背景**：使用 Canvas 繪製美觀的圓角矩形。
-- **多款主題**：支援經典黑、護眼綠、深藍淺藍、淺色模式、琥珀色等多種配色。
-- **實作位置**：`ui.py` 的 `_draw_rounded_rect()` 與 `apply_theme()` 方法。
-
-### 5. 時間格式切換
-- **12/24 小時制**：右鍵選單可切換，設定即時生效並自動儲存。
-- **實作位置**：`ui.py` 的 `change_time_format()` 方法。
-
-### 6. 提醒與週期性任務
-- **單次與週期性提醒**：支援特定日期單次提醒，或每週固定時間的週期性提醒。
-- **編輯與刪除**：提醒選單提供子選單，可快速編輯或刪除。
-- **實作位置**：`reminder_window.py` (UI) 與 `clock_logic.py` (邏輯)。
-
-### 7. 番茄鐘
-- **專注計時**：內建番茄鐘功能，支援專注與休息階段切換。
-- **狀態顯示**：番茄鐘狀態會即時顯示在時鐘旁。
-- **實作位置**：`pomodoro_service.py` 與 `ui.py` 的 `update_pomodoro_display()` 方法。
-
-### 8. 其他已實作但前文未完整提及功能
-- **休假模式（Vacation Mode）**：可一鍵切換「開始休假 / 開始工作」，進入休假時會自動停止番茄鐘，並暫停一般提醒與整點啟動；結束休假後會恢復切換前的暫停狀態。
-- **提醒與整點啟動可分別暫停**：兩種提醒管道可獨立「暫停 / 啟動」，並且狀態會反映在右鍵選單標籤。
-- **整點啟動設定視窗**：規則可為「網頁」或「程式」（程式路徑、參數、起始目錄），可設定起訖整點時段（含邊界）、立即測試，並保留視窗尺寸設定。
-- **匯入工作排程器 XML**：可在設定視窗匯入 Windows 工作排程器匯出的任務 XML（每日／每週觸發 + 啟動程式），自動轉成含星期條件的程式規則；不支援的設定會列為警告，分鐘會調整為整點。
-- **整點啟動觸發防重複**：同一小時只觸發一次，預設僅工作日啟用（匯入的規則以自己的星期為準），避免重複開啟或非上班日干擾。
-- **提醒視窗效率功能**：支援「上班日」快捷勾選、週期提醒時自動停用日期欄位、單次提醒預設為「目前時間 +5 分鐘」。
-- **提醒彈窗不阻塞主 UI**：提醒到點時以主 UI 執行緒中的非阻塞視窗顯示，支援訊息內網址點擊，並限制同時堆疊數量。
-- **滑鼠懸停顯示日期**：游標移到時間區域時可暫時切換顯示日期（含星期），並自動調整字級避免超出視窗。
-- **字元級時間動畫**：時間切換時以字元級垂直過渡動畫呈現，並搭配快取降低重繪成本。
-- **自適應刷新頻率**：動畫期高更新率、閒置期降頻更新，兼顧流暢與資源使用。
-- **效能監控開關**：可在設定中啟用效能監控，定期輸出渲染與邏輯迴圈統計資訊。
-- **設定檔健壯機制**：支援預設值遞迴合併、快取與檔案修改時間判定、損毀設定回退預設值。
-- **設定儲存安全性**：設定變更採延遲寫入，關閉時自動沖刷，並以原子替換避免寫入中斷造成設定檔損毀。
-- **啟動時自動清理過期提醒**：程式啟動時會移除已過期的單次提醒，避免歷史提醒殘留。
-
----
-
-## 設計模式
-
-```mermaid
-flowchart LR
-    subgraph Patterns["採用的設計模式"]
-        direction TB
-        P1["🔔 Observer Pattern<br/>UI 訂閱業務邏輯事件"]
-        P2["⚙️ Command Pattern<br/>封裝操作命令"]
-        P3["🔀 Strategy Pattern<br/>可替換的演算法邏輯"]
-        P4["1️⃣ Singleton Pattern<br/>唯一的設定管理器"]
-    end
-
-    P1 --> OB["observer.py"]
-    P2 --> CMD["command.py"]
-    P3 --> STR["strategy.py"]
-    P4 --> CM["config_manager.py"]
+```bash
+python -m unittest discover -s tests      # 執行全部測試
+pip install -e ".[dev]"                   # 安裝 ruff、coverage
+python -m ruff check ui core services strategies tests main.py
 ```
 
-| 設計模式 | 實作檔案 | 說明 |
-|----------|----------|------|
-| Observer | `observer.py` | `DigitalClock` 實作 `Observer` 介面，訂閱 `ClockLogic` 的事件通知 |
-| Command | `command.py` | `AddReminderCommand`、`DeleteReminderCommand`、`StartPomodoroCommand` 等 |
-| Strategy | `strategy.py` | `ReminderStrategy` 負責提醒檢查，`PomodoroStrategy` 負責階段切換 |
-| Singleton | `config_manager.py` | `ConfigManager` 使用 `__new__` 實現單例，確保設定管理器唯一 |
-
----
-
-## 程式碼品質
-
-- ✅ **完整型別註解**：所有方法參數與回傳值均加入型別提示
-- ✅ **詳細 Docstring**：每個類別與方法都有完整的說明文件
-- ✅ **例外處理**：關鍵操作加入 try-except 確保程式穩定性
-- ✅ **消除 Magic String**：事件名稱統一由 `Events` 類別管理
-- ✅ **單一職責原則**：業務邏輯與 UI 完全分離
-
----
-
-## 技術亮點
-
-- **背景任務與主 UI 執行緒互動**：使用 `pynput` 實現全域鍵盤監聽，並透過 `tkinter.after()` 將背景執行緒事件安全傳遞給主 UI 執行緒，避免多執行緒競爭與介面凍結問題。
-- **跨平台支援**：`ui.py` 的 `_setup_window()` 針對 Windows、macOS、Linux 提供不同的透明視窗實作。
-- **延遲儲存機制**：`clock_logic.py` 的 `schedule_save()` 避免頻繁寫入設定檔。
-
----
-
-## 檔案結構
-
-```
-digital_clock_v10/
-├── main.py              # 程式進入點
-├── ui.py                # 視圖層：主視窗與使用者互動
-├── clock_logic.py       # 業務邏輯層：核心邏輯與事件管理
-├── config_manager.py    # 配置層：設定檔載入與儲存 (Singleton)
-├── pomodoro_service.py  # 服務層：番茄鐘計時引擎
-├── reminder_window.py   # UI 元件：提醒設定視窗
-├── observer.py          # 設計模式：觀察者基類
-├── command.py           # 設計模式：命令模式
-├── strategy.py          # 設計模式：策略模式
-├── events.py            # 常數：事件名稱定義
-└── README.md            # 專案說明文件
-```
+- 測試使用標準庫 `unittest`；涉及 `ConfigManager` 時須先 `ConfigManager._instance = None` 重設單例，並 mock `Path.home()`。
+- 部分 UI 測試需要可用的顯示器，無顯示器時會自動略過。
+- 更多開發約定見 [AGENTS.md](AGENTS.md)。
 
 ---
 
