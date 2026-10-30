@@ -117,6 +117,21 @@ class TestHourlyWebService(unittest.TestCase):
 
         mock_open.assert_called_once_with('https://safe.example', new=2)
 
+    def test_unsafe_program_rule_is_never_launched_but_others_still_run(self):
+        now = datetime(2025, 1, 6, 9, 0, 0)
+        self.service.strategy.check.return_value = [
+            {'type': 'program', 'command': 'shutdown.exe', 'arguments': '/s /t 0'},
+            {'url': 'https://safe.example'},
+        ]
+
+        with patch('services.hourly_web_service.launch_program') as mock_launch, \
+                patch('services.hourly_web_service.webbrowser.open') as mock_open, \
+                patch.object(self.service, '_bring_browser_to_front'):
+            self.service.check(now=now, config={'hourly_web_reminder': {}})
+
+        mock_launch.assert_not_called()
+        mock_open.assert_called_once_with('https://safe.example', new=2)
+
     def test_update_config_saves_mixed_rules_and_syncs_legacy_fields_from_first_url(self):
         config = {}
         self.mock_config_mgr.load_config.return_value = config

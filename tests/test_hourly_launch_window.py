@@ -32,7 +32,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.callback = MagicMock()
         self.window = HourlyWebWindow(self.root, self.callback, {'bg': '#1C1C1C', 'fg': '#FFBF00'}, {})
         self.errors: list[str] = []
-        self.window._show_error = self.errors.append
+        self.window._show_error = lambda msg, title="錯誤": self.errors.append(msg)
 
     def tearDown(self):
         if self.window.winfo_exists():
@@ -114,14 +114,71 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.callback.assert_called_once()
         self.assertEqual(self.callback.call_args.args[0][0]['url'], 'https://pending.example')
 
-    def test_double_click_does_not_launch_program_rule(self):
-        self.window._refresh_listbox([{'type': 'program', 'command': 'x.exe', 'start_hour': 9, 'end_hour': 9}])
+    def _double_click_rule(self, rule: dict):
+        self.window._refresh_listbox([rule])
         self.window._rules_listbox.selection_set(0)
         with patch('ui.hourly_web_window.webbrowser.open') as web, \
-                patch('ui.hourly_web_window.launch_program') as launch:
+                patch('ui.hourly_web_window.launch_program') as launch, \
+                patch('ui.hourly_web_window.themed_confirm') as confirm:
             self.window._open_selected_rule_url(None)
         web.assert_not_called()
+        return launch, confirm
+
+    def test_double_click_misconfigured_program_shows_error_and_does_not_launch(self):
+        launch, confirm = self._double_click_rule(
+            {'type': 'program', 'command': 'x_missing.exe', 'start_hour': 9, 'end_hour': 9})
         launch.assert_not_called()
+        confirm.assert_not_called()
+        self.assertIn('設定不正確', self.errors[0])
+
+    def test_double_click_unsafe_program_is_refused_without_confirmation(self):
+        launch, confirm = self._double_click_rule(
+            {'type': 'program', 'command': 'shutdown.exe', 'arguments': '/s', 'start_hour': 9, 'end_hour': 9})
+        launch.assert_not_called()
+        confirm.assert_not_called()
+        self.assertIn('安全檢查未通過', self.errors[0])
+
+    def test_double_click_valid_program_launches_only_after_user_confirms(self):
+        import sys
+        launch, confirm = self._double_click_rule(
+            {'type': 'program', 'command': sys.executable, 'arguments': '-V', 'start_hour': 9, 'end_hour': 9})
+        self.assertEqual(self.errors, [])
+        launch.assert_not_called()  # 確認前不會執行
+        confirm.assert_called_once()
+        self.assertIn(sys.executable, confirm.call_args.args[1])
+
+        with patch('ui.hourly_web_window.launch_program') as launch_after:
+            confirm.call_args.args[2]()  # 使用者按下「執行」
+        launch_after.assert_called_once_with(sys.executable, '-V', '')
+
+    def test_invalid_program_rows_are_highlighted(self):
+        import sys
+        self.window._refresh_listbox([
+            {'type': 'program', 'command': 'x_missing.exe', 'start_hour': 9, 'end_hour': 9},
+            {'type': 'program', 'command': sys.executable, 'start_hour': 9, 'end_hour': 9},
+            {'url': 'https://a.example', 'start_hour': 9, 'end_hour': 9},
+        ])
+        colors = [self.window._rules_listbox.itemcget(i, 'foreground') for i in range(3)]
+        self.assertTrue(colors[0])
+        self.assertEqual((colors[1], colors[2]), ('', ''))
+
+    def test_adding_unsafe_program_rule_is_rejected(self):
+        self._select_type('程式')
+        self.window._add_url_entry.insert(0, 'shutdown.exe')
+        self.window._add_args_entry.insert(0, '/s /t 0')
+        self.window._add_rule()
+        self.assertEqual(self.window._rules, [])
+        self.assertIn('安全檢查未通過', self.errors[0])
+
+    def test_test_button_runs_same_checks(self):
+        self._select_type('程式')
+        self.window._add_url_entry.insert(0, 'x_missing.exe')
+        with patch('ui.hourly_web_window.launch_program') as launch, \
+                patch('ui.hourly_web_window.themed_confirm') as confirm:
+            self.window._test_target()
+        launch.assert_not_called()
+        confirm.assert_not_called()
+        self.assertEqual(len(self.errors), 1)
 
     def _imported_rule(self) -> dict:
         return {'type': 'program', 'command': 'C:\\missing\\python.exe', 'arguments': 'job.py',

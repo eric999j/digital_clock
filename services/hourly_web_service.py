@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 from core.events import Events
 from core.launch_rules import RULE_PROGRAM, RULE_URL, rule_target, rule_type
 from core.program_launcher import LaunchError, launch_program
+from core.program_safety import check_program_rule
 from core.url_validator import is_safe_url
 from strategies.hourly_web_strategy import HourlyWebReminderStrategy
 
@@ -92,6 +93,10 @@ class HourlyWebService:
 
     def _launch_rule_program(self, rule: dict[str, Any]) -> None:
         command = rule_target(rule)
+        blocked = check_program_rule(rule).blocked
+        if blocked:
+            logger.warning("Refusing to launch %r: %s", command, "; ".join(blocked))
+            return
         try:
             launch_program(command, rule.get('arguments', ''), rule.get('working_dir', ''))
             self.notify(Events.HOURLY_WEB_DUE, command)

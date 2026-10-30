@@ -8,6 +8,7 @@ from typing import Any
 
 from core.launch_rules import RULE_PROGRAM, RULE_URL, describe_rule, merge_rules, rule_target, rule_type
 from core.program_launcher import LaunchError, launch_program, program_exists
+from core.program_safety import RuleCheck, check_program_rule
 from core.task_xml_importer import TaskImportError, import_task_xml
 from core.url_validator import is_safe_url
 from ui.theme_utils import (
@@ -16,12 +17,14 @@ from ui.theme_utils import (
     compute_separator_color,
     get_mono_font_family,
     shift_color,
+    themed_confirm,
     themed_error,
     themed_info,
 )
 
 _MIN_HEIGHT = 520
 _TYPE_LABELS = {'網頁': RULE_URL, '程式': RULE_PROGRAM}
+_INVALID_ROW_FG = '#E05A5A'
 
 
 def _ensure_min_height(geometry: str) -> str:
@@ -232,8 +235,11 @@ class HourlyWebWindow(tk.Toplevel):
     def _refresh_listbox(self, rules: list[dict]) -> None:
         self._rules: list[dict] = list(rules)
         self._rules_listbox.delete(0, tk.END)
-        for r in self._rules:
+        for i, r in enumerate(self._rules):
             self._rules_listbox.insert(tk.END, describe_rule(r))
+            # 程式規則未通過設定驗證或安全檢查時以紅色標示，雙擊不會執行
+            if rule_type(r) == RULE_PROGRAM and not check_program_rule(r).ok:
+                self._rules_listbox.itemconfig(i, foreground=_INVALID_ROW_FG, selectforeground=_INVALID_ROW_FG)
 
     def _editing_rule(self) -> dict[str, Any] | None:
         """回傳正在編輯的原規則；非編輯模式回傳 None。"""
@@ -267,13 +273,17 @@ class HourlyWebWindow(tk.Toplevel):
                 raise ValueError(f"找不到程式：{command}")
             if rule_type(original) == RULE_PROGRAM:
                 kept.update({k: original[k] for k in ('name', 'working_dir') if original.get(k)})
-            return {
+            rule = {
                 'type': RULE_PROGRAM,
                 'command': command,
                 'arguments': self._add_args_entry.get().strip(),
                 **kept,
                 **hours,
             }
+            blocked = check_program_rule(rule).blocked
+            if blocked:
+                raise ValueError("安全檢查未通過，無法新增此程式規則：\n" + "\n".join(f"- {m}" for m in blocked))
+            return rule
         if not is_safe_url(target):
             raise ValueError("請使用以 http:// 或 https:// 開頭的有效網址。")
         return {'url': target, **kept, **hours}
@@ -369,14 +379,17 @@ class HourlyWebWindow(tk.Toplevel):
         finally:
             self._rules_menu.grab_release()
 
-    def _open_selected_rule_url(self, _event: tk.Event) -> None:
-        """雙擊網頁規則時開啟該列 URL；程式規則不會因雙擊而啟動，避免誤觸。"""
+    def _open_selected_rule_url(self, _event: tk.Event | None) -> None:
+        """雙擊規則：網頁直接開啟；程式須通過設定驗證與安全檢查並經使用者確認才執行。"""
         sel = self._rules_listbox.curselection()
         if not sel:
             return
 
         idx = sel[0]
-        if idx >= len(self._rules) or rule_type(self._rules[idx]) == RULE_PROGRAM:
+        if idx >= len(self._rules):
+            return
+        if rule_type(self._rules[idx]) == RULE_PROGRAM:
+            self._run_program_rule(self._rules[idx])
             return
 
         url = rule_target(self._rules[idx])
@@ -388,6 +401,46 @@ class HourlyWebWindow(tk.Toplevel):
             webbrowser.open(url)
         except Exception as e:
             self._show_error(f"無法開啟網頁：{e}")
+
+    @staticmethod
+    def _format_issues(header: str, issues: tuple[str, ...]) -> str:
+        return header + "\n" + "\n".join(f"- {issue}" for issue in issues)
+
+    def _run_program_rule(self, rule: dict[str, Any]) -> None:
+        """依序做設定驗證、安全檢查、使用者確認，全部通過才啟動程式。"""
+        check = check_program_rule(rule)
+        if check.errors:
+            self._show_error(self._format_issues("此程式規則設定不正確，無法執行：", check.errors))
+            return
+        if check.blocked:
+            self._show_error(
+                self._format_issues("安全檢查未通過，已拒絕執行：", check.blocked), title="已拒絕執行",
+            )
+            return
+
+        self._confirm_launch(rule, check)
+
+    def _confirm_launch(self, rule: dict[str, Any], check: RuleCheck) -> None:
+        command = rule_target(rule)
+        arguments = str(rule.get('arguments', '')).strip()
+        working_dir = str(rule.get('working_dir', '')).strip()
+        lines = ["檢查通過，確定要執行以下程式嗎？", "", f"程式：{command}"]
+        if arguments:
+            lines.append(f"參數：{arguments}")
+        if working_dir:
+            lines.append(f"起始目錄：{working_dir}")
+        if check.warnings:
+            lines += ["", *(f"注意：{w}" for w in check.warnings)]
+        themed_confirm(
+            self, "\n".join(lines), lambda: self._launch_checked(rule), self.theme,
+            title="確認執行", yes_text="執行", no_text="取消",
+        )
+
+    def _launch_checked(self, rule: dict[str, Any]) -> None:
+        try:
+            launch_program(rule_target(rule), rule.get('arguments', ''), rule.get('working_dir', ''))
+        except LaunchError as e:
+            self._show_error(str(e))
 
     def _browse_program(self) -> None:
         path = filedialog.askopenfilename(
@@ -401,11 +454,13 @@ class HourlyWebWindow(tk.Toplevel):
     def _test_target(self) -> None:
         target = self._add_url_entry.get().strip()
         if self._current_type() == RULE_PROGRAM:
-            try:
-                working_dir = (self._editing_rule() or {}).get('working_dir', '')
-                launch_program(target, self._add_args_entry.get(), working_dir)
-            except LaunchError as e:
-                self._show_error(str(e))
+            rule = {
+                'type': RULE_PROGRAM,
+                'command': target.strip('"'),
+                'arguments': self._add_args_entry.get().strip(),
+                'working_dir': (self._editing_rule() or {}).get('working_dir', ''),
+            }
+            self._run_program_rule(rule)
             return
 
         if not target:
@@ -440,6 +495,10 @@ class HourlyWebWindow(tk.Toplevel):
         if skipped:
             summary += f"（{skipped} 條重複已略過）"
         lines = [summary + "，按「儲存」後生效。", *(f"- {w}" for w in result.warnings)]
+        for rule in result.rules:
+            if rule_type(rule) == RULE_PROGRAM:
+                for issue in check_program_rule(rule).blocked:
+                    lines.append(f"- 未通過安全檢查（將不會執行）：{rule_target(rule)}：{issue}")
         themed_info(self, "\n".join(lines), self.theme, title="匯入結果", ok_text="確定")
 
     def _on_submit(self) -> None:
