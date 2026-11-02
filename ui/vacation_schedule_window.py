@@ -85,32 +85,37 @@ class VacationScheduleWindow(tk.Toplevel):
             row_attr='start',
         )
 
+        # 單日休假：勾選後隱藏結束日期，結束日視為開始日
+        self.single_day_var = tk.BooleanVar(self, value=self._is_single_day_schedule())
+        ttk.Checkbutton(
+            frame,
+            text="單日休假（只休開始日期當天，免設結束日期）",
+            variable=self.single_day_var,
+            command=self._on_single_day_toggled,
+            style='Vacation.TCheckbutton',
+        ).pack(anchor=tk.W, pady=(0, 2))
+
         # 結束日期
-        end_frame = ttk.LabelFrame(frame, text="結束日期", padding="5", style='Vacation.TLabelframe')
-        end_frame.pack(fill=tk.X, pady=5)
+        self._end_frame = ttk.LabelFrame(frame, text="結束日期", padding="5", style='Vacation.TLabelframe')
 
         self.end_year_var = tk.StringVar(value=str(tomorrow.year))
         self.end_month_var = tk.StringVar(value=f"{tomorrow.month:02d}")
         self.end_day_var = tk.StringVar(value=f"{tomorrow.day:02d}")
 
         self._add_date_row(
-            end_frame,
+            self._end_frame,
             self.end_year_var,
             self.end_month_var,
             self.end_day_var,
             row_attr='end',
         )
-        ttk.Label(
-            frame,
-            text="單日休假：開始與結束日期設為同一天（例如 9/11 ~ 9/11）。",
-            style='Vacation.TLabel',
-        ).pack(anchor=tk.W, pady=(0, 5))
 
         # 備註
-        note_frame = ttk.LabelFrame(frame, text="備註（選填）", padding="5", style='Vacation.TLabelframe')
-        note_frame.pack(fill=tk.X, pady=5)
-        self.note_entry = ttk.Entry(note_frame, style='Vacation.TEntry')
+        self._note_frame = ttk.LabelFrame(frame, text="備註（選填）", padding="5", style='Vacation.TLabelframe')
+        self._note_frame.pack(fill=tk.X, pady=5)
+        self.note_entry = ttk.Entry(self._note_frame, style='Vacation.TEntry')
         self.note_entry.pack(fill=tk.X, expand=True)
+        self._on_single_day_toggled()
 
         # 按鈕
         btn_frame = ttk.Frame(frame, style='Vacation.TFrame')
@@ -119,6 +124,19 @@ class VacationScheduleWindow(tk.Toplevel):
         submit_label = "儲存" if self.schedule_to_edit else "新增"
         ttk.Button(btn_frame, text=submit_label, command=self._on_submit, style='Vacation.TButton').pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="取消", command=self.destroy, style='Vacation.TButton').pack(side=tk.RIGHT)
+
+    def _is_single_day_schedule(self) -> bool:
+        """編輯既有排程時，開始日與結束日相同即視為單日休假；新增時預設為否。"""
+        if not self.schedule_to_edit:
+            return False
+        return self.schedule_to_edit.get('start') == self.schedule_to_edit.get('end')
+
+    def _on_single_day_toggled(self) -> None:
+        """單日休假時隱藏結束日期欄位，否則顯示。"""
+        if self.single_day_var.get():
+            self._end_frame.pack_forget()
+        else:
+            self._end_frame.pack(fill=tk.X, pady=5, before=self._note_frame)
 
     def _add_date_row(
         self,
@@ -182,12 +200,15 @@ class VacationScheduleWindow(tk.Toplevel):
                 self.start_day_var.get(),
                 label="開始日期",
             )
-            end = self._build_date(
-                self.end_year_var.get(),
-                self.end_month_var.get(),
-                self.end_day_var.get(),
-                label="結束日期",
-            )
+            if self.single_day_var.get():
+                end = start
+            else:
+                end = self._build_date(
+                    self.end_year_var.get(),
+                    self.end_month_var.get(),
+                    self.end_day_var.get(),
+                    label="結束日期",
+                )
         except ValueError as e:
             self._show_error(str(e))
             return
@@ -198,7 +219,7 @@ class VacationScheduleWindow(tk.Toplevel):
 
         today = date.today()
         if end < today:
-            self._show_error("結束日期不可早於今天。")
+            self._show_error("日期不可早於今天。" if self.single_day_var.get() else "結束日期不可早於今天。")
             return
 
         note = self.note_entry.get().strip()
