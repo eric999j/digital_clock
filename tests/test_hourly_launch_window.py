@@ -258,7 +258,20 @@ class TestHourlyLaunchWindow(unittest.TestCase):
     def test_context_menu_has_edit_entry(self):
         menu = self.window._rules_menu
         labels = [menu.entrycget(i, 'label') for i in range(menu.index(tk.END) + 1)]
-        self.assertEqual(labels, ['編輯規則', '啟用／停用', '刪除此規則'])
+        self.assertEqual(labels, ['執行規則', '編輯規則', '啟用／停用', '刪除此規則'])
+
+    def test_context_menu_run_executes_selected_rule_like_double_click(self):
+        import sys
+        self.window._refresh_listbox([
+            {'type': 'program', 'command': sys.executable, 'arguments': '-V', 'start_hour': 9, 'end_hour': 9}])
+        self.window._rules_listbox.selection_set(0)
+        menu = self.window._rules_menu
+        self.assertEqual(menu.entrycget(0, 'label'), '執行規則')
+        with patch('ui.hourly_web_window.themed_confirm') as confirm, \
+                patch('ui.hourly_web_window.launch_program') as launch:
+            menu.invoke(0)
+        confirm.assert_called_once()
+        launch.assert_not_called()  # 仍需使用者確認
 
     def _shutdown_rule(self) -> dict:
         return {'type': 'program', 'command': 'shutdown', 'arguments': '/r /f /t 0',

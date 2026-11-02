@@ -152,6 +152,7 @@ class HourlyWebWindow(tk.Toplevel):
         self._file_drop_enabled = enable_file_drop([self, list_frame, self._rules_listbox], self._on_files_dropped)
 
         self._rules_menu = tk.Menu(self, tearoff=0)
+        self._rules_menu.add_command(label="執行規則", command=self._open_selected_rule_url)
         self._rules_menu.add_command(label="編輯規則", command=self._edit_rule)
         self._rules_menu.add_command(label="啟用／停用", command=self._toggle_selected_rule)
         self._rules_menu.add_command(label="刪除此規則", command=self._remove_rule)
@@ -520,8 +521,8 @@ class HourlyWebWindow(tk.Toplevel):
         finally:
             self._rules_menu.grab_release()
 
-    def _open_selected_rule_url(self, _event: tk.Event | None) -> None:
-        """雙擊規則：網頁直接開啟；程式須通過設定驗證與安全檢查並經使用者確認才執行。"""
+    def _open_selected_rule_url(self, _event: tk.Event | None = None) -> None:
+        """執行選取的規則（雙擊或右鍵「執行規則」）：網頁直接開啟；程式須通過設定驗證與安全檢查並經使用者確認才執行。"""
         sel = self._rules_listbox.curselection()
         if not sel:
             return
