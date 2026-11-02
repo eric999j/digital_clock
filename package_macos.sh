@@ -23,7 +23,7 @@ echo "[3/4] Installing packaging tools..."
 "$VENV_PY" -m pip install --upgrade pyinstaller
 
 echo "[4/4] Building release binary..."
-"$VENV_PY" -m PyInstaller --noconfirm --clean --windowed --onefile --name DigitalClock --collect-all pynput main.py
+"$VENV_PY" -m PyInstaller --noconfirm --clean --windowed --onefile --name DigitalClock --collect-all pynput --collect-all tkinterdnd2 main.py
 
 echo
 echo "Build completed: dist/DigitalClock"

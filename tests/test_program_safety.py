@@ -105,6 +105,14 @@ class TestProgramSafetyChecks(unittest.TestCase):
         self.assertEqual(scan_text('graceful shutdown and format string'), [])
         self.assertIn('fork bomb', scan_text('%0|%0'))
 
+    def test_skip_safety_turns_blocked_into_warnings_but_keeps_config_errors(self):
+        rule = _rule('shutdown', '/r /f /t 0')
+        self.assertTrue(check_program_rule(rule).blocked)
+        check = check_program_rule(rule, skip_safety=True)
+        self.assertEqual(check.blocked, ())
+        self.assertTrue(any('已略過安全檢查' in w for w in check.warnings))
+        self.assertTrue(check_program_rule(_rule('definitely_missing_tool_xyz'), skip_safety=True).errors)
+
 
 if __name__ == '__main__':
     unittest.main()

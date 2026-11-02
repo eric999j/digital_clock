@@ -16,7 +16,7 @@ pip install pynput
 ## 專案概覽
 
 桌面數位時鐘（tkinter），支援番茄鐘、提醒、整點啟動（網頁／程式）、截圖自動隱藏等功能。
-Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無其他外部依賴。
+Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkinterdnd2` 為選用（整點啟動視窗拖入 XML）。
 
 ## 架構
 
@@ -99,6 +99,9 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用），無�
 ```
 
 - 無 `type` 的規則視為網頁；`type=program` 是程式。共用邏輯在 `core/launch_rules.py`。
+- 規則可選欄位：`enabled`（預設 true，false 時不觸發）、`trigger: "startup"`（主程式啟動時由 `ClockLogic.start()` → `HourlyWebService.run_startup_rules()` 執行一次，不帶時段／星期；Strategy 的整點比對會略過）。
+- `hourly_web_reminder.skip_safety_check`（設定視窗左下角勾選）為 true 時，`check_program_rule(rule, skip_safety=True)` 把 `blocked` 降為警告，自動觸發與清單紅色標示都不再攔截；設定錯誤（`errors`）仍會擋。未勾選時手動執行被攔下的規則需使用者在確認視窗授權。
+- 拖入 XML 由 `ui/file_drop.py`（選用依賴 `tkinterdnd2`，缺少時自動停用）處理。
 - `update_config(url_rules)` 只用第一筆網頁規則同步舊欄位；無網頁規則時清空 `url`。
 - Strategy 逐條比對 `start_hour ≤ now.hour ≤ end_hour`，回傳所有命中規則（依目標去重）。
 - 程式一律經 `core/program_launcher.launch_program()` 啟動：不經 shell、不等待結束。

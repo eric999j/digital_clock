@@ -131,12 +131,14 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         confirm.assert_not_called()
         self.assertIn('設定不正確', self.errors[0])
 
-    def test_double_click_unsafe_program_is_refused_without_confirmation(self):
+    def test_double_click_unsafe_program_requires_authorization(self):
         launch, confirm = self._double_click_rule(
             {'type': 'program', 'command': 'shutdown.exe', 'arguments': '/s', 'start_hour': 9, 'end_hour': 9})
         launch.assert_not_called()
-        confirm.assert_not_called()
-        self.assertIn('安全檢查未通過', self.errors[0])
+        self.assertEqual(self.errors, [])
+        confirm.assert_called_once()
+        self.assertIn('安全檢查未通過', confirm.call_args.args[1])
+        self.assertEqual(confirm.call_args.kwargs['yes_text'], '授權並執行')
 
     def test_double_click_valid_program_launches_only_after_user_confirms(self):
         import sys
@@ -230,7 +232,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.window._add_url_entry.insert(0, 'https://b.example')
         self.window._on_submit()
         self.callback.assert_called_once_with(
-            [{'url': 'https://b.example', 'weekdays': [5, 6], 'start_hour': 8, 'end_hour': 9}])
+            [{'url': 'https://b.example', 'weekdays': [5, 6], 'start_hour': 8, 'end_hour': 9}], False)
 
     def test_edit_type_change_drops_program_only_fields(self):
         self.window._refresh_listbox([self._imported_rule()])
@@ -256,7 +258,109 @@ class TestHourlyLaunchWindow(unittest.TestCase):
     def test_context_menu_has_edit_entry(self):
         menu = self.window._rules_menu
         labels = [menu.entrycget(i, 'label') for i in range(menu.index(tk.END) + 1)]
-        self.assertEqual(labels, ['編輯規則', '刪除此規則'])
+        self.assertEqual(labels, ['編輯規則', '啟用／停用', '刪除此規則'])
+
+    def _shutdown_rule(self) -> dict:
+        return {'type': 'program', 'command': 'shutdown', 'arguments': '/r /f /t 0',
+                'start_hour': 23, 'end_hour': 23, 'weekdays': [6]}
+
+    def test_skip_safety_checkbox_controls_red_rows_and_is_saved(self):
+        self.window._refresh_listbox([self._shutdown_rule()])
+        listbox = self.window._rules_listbox
+        self.assertTrue(listbox.itemcget(0, 'foreground'))
+
+        self.window._skip_safety_var.set(True)
+        self.window._on_skip_safety_changed()
+        self.assertEqual(listbox.itemcget(0, 'foreground'), '')
+
+        self.window._on_submit()
+        self.callback.assert_called_once_with([self._shutdown_rule()], True)
+
+    def test_skip_safety_allows_adding_and_runs_without_authorization_prompt(self):
+        self._select_type('程式')
+        self.window._add_url_entry.insert(0, 'shutdown.exe')
+        self.window._add_args_entry.insert(0, '/s /t 0')
+        self.window._add_rule()
+        self.assertEqual(self.window._rules, [])  # 未勾選時仍拒絕新增
+
+        self.window._skip_safety_var.set(True)
+        self.window._add_rule()
+        self.assertEqual(len(self.window._rules), 1)
+
+        launch, confirm = self._double_click_rule(self.window._rules[0])
+        confirm.assert_called_once()
+        self.assertNotIn('需要授權', confirm.call_args.kwargs['title'])
+
+    def test_skip_safety_state_loaded_from_config(self):
+        window = HourlyWebWindow(self.root, self.callback, None, {'skip_safety_check': True})
+        try:
+            self.assertTrue(window._skip_safety_var.get())
+        finally:
+            window.destroy()
+
+    def test_import_summary_hides_blocked_notice_when_safety_skipped(self):
+        from core.task_xml_importer import ImportResult
+        result = ImportResult(rules=[self._shutdown_rule()])
+        self.assertTrue(any('未通過安全檢查' in line for line in self.window._merge_imported(result)))
+
+        self.window._refresh_listbox([])
+        self.window._skip_safety_var.set(True)
+        self.assertFalse(any('未通過安全檢查' in line for line in self.window._merge_imported(result)))
+
+    def test_toggle_rule_checkbox_does_not_mutate_source_rule(self):
+        source = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}
+        self.window._refresh_listbox([source])
+        self.assertTrue(self.window._rules_listbox.get(0).startswith('☑'))
+        self.window._toggle_rule(0)
+        self.assertEqual(self.window._rules[0]['enabled'], False)
+        self.assertTrue(self.window._rules_listbox.get(0).startswith('☐'))
+        self.assertNotIn('enabled', source)
+        self.window._toggle_rule(0)
+        self.assertNotIn('enabled', self.window._rules[0])
+
+    def test_click_on_checkbox_toggles_but_text_click_does_not(self):
+        self.window._refresh_listbox([{'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}])
+        self.window.deiconify()
+        self.window.update()
+        listbox = self.window._rules_listbox
+        y = listbox.bbox(0)[1] + 2
+        listbox.event_generate('<Button-1>', x=self.window._checkbox_width - 2, y=y)
+        self.assertFalse(self.window._rules[0].get('enabled', True))
+        listbox.event_generate('<Button-1>', x=self.window._checkbox_width + 80, y=y)
+        self.assertFalse(self.window._rules[0].get('enabled', True))
+
+    def test_startup_trigger_builds_rule_without_hours(self):
+        self._select_type('程式')
+        self.window._trigger_combo.set('程式啟動時')
+        self.window._on_trigger_changed()
+        import sys
+        self.window._add_url_entry.insert(0, sys.executable)
+        self.window._add_rule()
+        rule = self.window._rules[0]
+        self.assertEqual(rule['trigger'], 'startup')
+        self.assertNotIn('start_hour', rule)
+        self.assertIn('程式啟動時', self.window._rules_listbox.get(0))
+
+    def test_editing_disabled_rule_keeps_it_disabled(self):
+        self.window._refresh_listbox([{'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9,
+                                       'enabled': False}])
+        self._edit()
+        self.window._add_rule()
+        self.assertFalse(self.window._rules[0]['enabled'])
+
+    def test_dropped_xml_files_are_imported_and_non_xml_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            xml = Path(tmp) / 'task.xml'
+            xml.write_bytes(_utf16(_task_xml(_WEEKDAY_TRIGGER, _EXEC)))
+            txt = Path(tmp) / 'a.txt'
+            txt.write_text('x')
+            with patch('ui.hourly_web_window.themed_info') as info:
+                self.window._on_files_dropped([str(xml), str(txt)])
+            self.assertEqual(len(self.window._rules), 1)
+            self.assertIn('不是 .xml 檔案', info.call_args.args[1])
+
+            self.window._on_files_dropped([str(txt)])
+            self.assertIn('匯入失敗', self.errors[0])
 
     def test_loads_legacy_single_url_config(self):
         window = HourlyWebWindow(self.root, self.callback, None,

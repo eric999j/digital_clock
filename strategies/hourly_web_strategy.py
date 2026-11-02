@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from core.launch_rules import RULE_URL, rule_key, rule_target
+from core.launch_rules import RULE_URL, is_rule_enabled, is_startup_rule, rule_key, rule_target
 
 from .base import CheckStrategy
 
@@ -50,7 +50,7 @@ class HourlyWebReminderStrategy(CheckStrategy):
         matched: list[dict[str, Any]] = []
         seen: set[tuple[str, ...]] = set()
         for rule in rules:
-            if not rule_target(rule):
+            if not rule_target(rule) or not is_rule_enabled(rule) or is_startup_rule(rule):
                 continue
             if not rule.get('start_hour', 0) <= now.hour <= rule.get('end_hour', 23):
                 continue

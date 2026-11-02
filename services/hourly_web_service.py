@@ -9,7 +9,15 @@ from services.config_service import ConfigManager
 
 logger = logging.getLogger(__name__)
 from core.events import Events
-from core.launch_rules import RULE_PROGRAM, RULE_URL, rule_target, rule_type
+from core.launch_rules import (
+    RULE_PROGRAM,
+    RULE_URL,
+    is_rule_enabled,
+    is_startup_rule,
+    rule_key,
+    rule_target,
+    rule_type,
+)
 from core.program_launcher import LaunchError, launch_program
 from core.program_safety import check_program_rule
 from core.url_validator import is_safe_url
@@ -35,12 +43,21 @@ class HourlyWebService:
     def config(self) -> dict[str, Any]:
         return self.config_manager.load_config()
 
-    def update_config(self, url_rules: list[dict]) -> None:
-        """更新整點啟動規則，並將第一筆網頁規則同步到 url/start_hour/end_hour 供舊版相容。"""
+    def update_config(self, url_rules: list[dict], skip_safety: bool | None = None) -> None:
+        """更新整點啟動規則，並將第一筆網頁規則同步到 url/start_hour/end_hour 供舊版相容。
+
+        Args:
+            url_rules: 規則清單
+            skip_safety: 是否忽略程式規則的安全檢查；None 表示維持原設定
+        """
         config = self.config
         hw = config.setdefault('hourly_web_reminder', {})
         hw['url_rules'] = url_rules
-        first_url_rule = next((r for r in url_rules if rule_type(r) == RULE_URL), None)
+        if skip_safety is not None:
+            hw['skip_safety_check'] = bool(skip_safety)
+        first_url_rule = next(
+            (r for r in url_rules if rule_type(r) == RULE_URL and not is_startup_rule(r)), None,
+        )
         if first_url_rule:
             hw['url'] = first_url_rule['url']
             hw['start_hour'] = first_url_rule['start_hour']
@@ -50,6 +67,22 @@ class HourlyWebService:
             hw['url'] = ''
         self.config_manager.save_config(config)
         self.notify(Events.HOURLY_WEB_UPDATED, None)
+
+    def run_startup_rules(self, config: dict[str, Any] | None = None) -> None:
+        """主程式啟動時執行所有啟用的「程式啟動時」規則（不受時段與星期限制）。"""
+        hourly_config = (config if config is not None else self.config).get('hourly_web_reminder', {})
+        if hourly_config.get('paused', False):
+            return
+        skip_safety = bool(hourly_config.get('skip_safety_check', False))
+        seen: set[tuple[str, ...]] = set()
+        for rule in hourly_config.get('url_rules', []):
+            if not is_startup_rule(rule) or not is_rule_enabled(rule) or not rule_target(rule):
+                continue
+            key = rule_key(rule)
+            if key in seen:
+                continue
+            seen.add(key)
+            self._run_rule(rule, skip_safety)
 
     def check(self, now: datetime | None = None, config: dict[str, Any] | None = None) -> None:
         """
@@ -69,15 +102,21 @@ class HourlyWebService:
         if not rules:
             return
 
+        skip_safety = bool(hourly_config.get('skip_safety_check', False))
         opened_any = False
         for rule in rules:
-            if rule_type(rule) == RULE_PROGRAM:
-                self._launch_rule_program(rule)
-            elif self._open_url(rule_target(rule)):
+            if self._run_rule(rule, skip_safety):
                 opened_any = True
 
         if opened_any:
             self._bring_browser_to_front()
+
+    def _run_rule(self, rule: dict[str, Any], skip_safety: bool) -> bool:
+        """啟動單一規則；回傳網頁規則是否成功開啟。"""
+        if rule_type(rule) == RULE_PROGRAM:
+            self._launch_rule_program(rule, skip_safety)
+            return False
+        return self._open_url(rule_target(rule))
 
     def _open_url(self, url: str) -> bool:
         if not is_safe_url(url):
@@ -91,9 +130,9 @@ class HourlyWebService:
             logger.error("Error opening URL: %s", e)
             return False
 
-    def _launch_rule_program(self, rule: dict[str, Any]) -> None:
+    def _launch_rule_program(self, rule: dict[str, Any], skip_safety: bool = False) -> None:
         command = rule_target(rule)
-        blocked = check_program_rule(rule).blocked
+        blocked = check_program_rule(rule, skip_safety=skip_safety).blocked
         if blocked:
             logger.warning("Refusing to launch %r: %s", command, "; ".join(blocked))
             return

@@ -81,12 +81,31 @@ class TestParseTaskXml(unittest.TestCase):
             parse_task_xml(_utf16(_task_xml(disabled, _EXEC)))
 
     def test_unsupported_trigger_and_action_are_reported(self):
-        triggers = _WEEKDAY_TRIGGER + '<LogonTrigger><Enabled>true</Enabled></LogonTrigger>'
+        triggers = _WEEKDAY_TRIGGER + '<TimeTrigger><Enabled>true</Enabled></TimeTrigger>'
         actions = _EXEC + '<ComHandler><ClassId>{x}</ClassId></ComHandler>'
         result = parse_task_xml(_utf16(_task_xml(triggers, actions)))
         self.assertEqual(len(result.rules), 1)
-        self.assertTrue(any('LogonTrigger' in w for w in result.warnings))
+        self.assertTrue(any('TimeTrigger' in w for w in result.warnings))
         self.assertTrue(any('ComHandler' in w for w in result.warnings))
+
+    def test_logon_trigger_becomes_startup_rule(self):
+        trigger = '<LogonTrigger><Enabled>true</Enabled></LogonTrigger>'
+        result = parse_task_xml(_utf16(_task_xml(trigger, _EXEC)))
+        self.assertEqual(len(result.rules), 1)
+        rule = result.rules[0]
+        self.assertEqual(rule['trigger'], 'startup')
+        self.assertNotIn('start_hour', rule)
+        self.assertNotIn('weekdays', rule)
+        self.assertTrue(any('程式啟動時' in w for w in result.warnings))
+
+    def test_multiple_startup_triggers_yield_single_rule(self):
+        triggers = '<LogonTrigger/><BootTrigger/>'
+        result = parse_task_xml(_utf16(_task_xml(triggers, _EXEC)))
+        self.assertEqual(len(result.rules), 1)
+
+    def test_disabled_logon_trigger_is_skipped(self):
+        with self.assertRaises(TaskImportError):
+            parse_task_xml(_utf16(_task_xml('<LogonTrigger><Enabled>false</Enabled></LogonTrigger>', _EXEC)))
 
     def test_repetition_and_interval_warnings(self):
         trigger = _WEEKDAY_TRIGGER.replace(

@@ -1,6 +1,7 @@
 """匯入 Windows 工作排程器匯出的任務 XML，轉成整點啟動規則。
 
-支援每日／每週的 CalendarTrigger 搭配 Exec 動作；其餘設定會略過並回報警告。
+支援每日／每週的 CalendarTrigger（轉為整點規則）與登入／開機觸發（轉為「程式啟動時」規則），
+搭配 Exec 動作；其餘設定會略過並回報警告。
 """
 import logging
 import re
@@ -9,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from core.launch_rules import RULE_PROGRAM
+from core.launch_rules import RULE_PROGRAM, TRIGGER_STARTUP
 from core.program_launcher import program_exists
 
 logger = logging.getLogger(__name__)
@@ -56,9 +57,21 @@ def _parse_root(data: bytes) -> ET.Element:
         raise TaskImportError(f"XML 格式錯誤：{e}") from e
 
 
-def _parse_trigger(trigger: ET.Element, warnings: list[str]) -> tuple[int, list[int]] | None:
-    """回傳 (整點, 星期清單)；不支援時回傳 None 並記錄警告。"""
+_STARTUP_TRIGGERS = {'LogonTrigger': '登入', 'BootTrigger': '開機'}
+
+
+def _parse_trigger(trigger: ET.Element, warnings: list[str]) -> tuple[int | None, list[int] | None] | None:
+    """回傳 (整點, 星期清單)；登入／開機觸發回傳 (None, None) 代表「程式啟動時」。
+
+    不支援時回傳 None 並記錄警告。
+    """
     kind = _local(trigger.tag)
+    if kind in _STARTUP_TRIGGERS:
+        if _text(trigger, 'Enabled').lower() == 'false':
+            warnings.append("略過已停用的觸發條件")
+            return None
+        warnings.append(f"{_STARTUP_TRIGGERS[kind]}觸發已轉為「程式啟動時」執行")
+        return None, None
     if kind != 'CalendarTrigger':
         warnings.append(f"略過不支援的觸發條件：{kind}")
         return None
@@ -141,19 +154,25 @@ def parse_task_xml(data: bytes) -> ImportResult:
     ]
     actions = _parse_actions(root, result.warnings)
     if not triggers:
-        raise TaskImportError("找不到可匯入的每日／每週觸發條件")
+        raise TaskImportError("找不到可匯入的觸發條件（支援每日／每週與登入／開機）")
     if not actions:
         raise TaskImportError("找不到可匯入的「啟動程式」動作")
 
     registration = _child(root, 'RegistrationInfo')
     name = _text(registration, 'URI').lstrip('\\') if registration is not None else ''
 
+    seen_startup = False
     for hour, weekdays in triggers:
+        if hour is None:
+            if seen_startup:  # 多個登入／開機觸發只需一條啟動規則
+                continue
+            seen_startup = True
         for action in actions:
-            rule: dict[str, Any] = {
-                'type': RULE_PROGRAM, **action,
-                'start_hour': hour, 'end_hour': hour, 'weekdays': weekdays,
-            }
+            rule: dict[str, Any] = {'type': RULE_PROGRAM, **action}
+            if hour is None:
+                rule['trigger'] = TRIGGER_STARTUP
+            else:
+                rule.update({'start_hour': hour, 'end_hour': hour, 'weekdays': weekdays})
             if name:
                 rule['name'] = name
             result.rules.append(rule)

@@ -121,7 +121,8 @@ class ConfigManager:
                 "start_hour": 8,
                 "end_hour": 17,
                 "work_days_only": True,  # 是否僅在上班日（週一至週五）觸發
-                "url_rules": []  # [{url | type=program+command/arguments/working_dir, start_hour, end_hour, weekdays?}]
+                "skip_safety_check": False,  # True 時忽略程式規則的安全檢查（可執行 shutdown 等）
+                "url_rules": []  # [{url | type=program+command/arguments/working_dir, start_hour, end_hour, weekdays?, enabled?, trigger?=startup}]
             },
             "pomodoro": {
                 "focus_minutes": 25,

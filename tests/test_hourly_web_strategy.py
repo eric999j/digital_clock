@@ -183,6 +183,13 @@ class TestHourlyWebReminderStrategy(unittest.TestCase):
         config = {'url_rules': [self._program_rule(command='  ')]}
         self.assertEqual(self.strategy.check(config, datetime(2025, 1, 6, 9, 0)), [])
 
+    def test_disabled_and_startup_rules_never_trigger_hourly(self):
+        config = {'url_rules': [
+            {**self._program_rule(), 'enabled': False},
+            {'type': 'program', 'command': 'p.exe', 'trigger': 'startup'},
+        ]}
+        self.assertEqual(self.strategy.check(config, datetime(2025, 1, 6, 9, 0)), [])
+
 
 if __name__ == '__main__':
     unittest.main()

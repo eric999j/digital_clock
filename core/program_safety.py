@@ -187,11 +187,12 @@ def _check_safety(
     return blocked, warnings
 
 
-def check_program_rule(rule: dict[str, Any]) -> RuleCheck:
+def check_program_rule(rule: dict[str, Any], skip_safety: bool = False) -> RuleCheck:
     """檢查程式規則的設定是否正確，並做簡易安全檢查。
 
     Args:
         rule: 整點啟動規則（``type=program``，含 ``command``、``arguments``、``working_dir`` 等）
+        skip_safety: 為 True 時忽略安全檢查（設定驗證仍會進行），原本會被攔下的項目改列為警告。
 
     Returns:
         檢查結果；僅在 ``ok`` 為 True 時才應允許使用者執行。
@@ -203,4 +204,7 @@ def check_program_rule(rule: dict[str, Any]) -> RuleCheck:
 
     errors = _check_config(rule, resolved, command, arguments, cwd)
     blocked, warnings = _check_safety(resolved, command, arguments, os.path.expandvars(cwd))
+    if skip_safety:
+        warnings = [f"已略過安全檢查：{issue}" for issue in blocked] + warnings
+        blocked = []
     return RuleCheck(tuple(errors), tuple(blocked), tuple(warnings))

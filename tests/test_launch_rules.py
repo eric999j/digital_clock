@@ -1,6 +1,14 @@
 import unittest
 
-from core.launch_rules import describe_rule, format_weekdays, merge_rules, rule_key, rule_type
+from core.launch_rules import (
+    describe_rule,
+    format_weekdays,
+    is_rule_enabled,
+    is_startup_rule,
+    merge_rules,
+    rule_key,
+    rule_type,
+)
 
 
 class TestLaunchRules(unittest.TestCase):
@@ -46,6 +54,23 @@ class TestLaunchRules(unittest.TestCase):
         rule = {'url': 'https://a.example', 'start_hour': 9, 'end_hour': 9}
         merged, added = merge_rules([], [rule, dict(rule)])
         self.assertEqual((len(merged), added), (1, 1))
+
+    def test_startup_rule_helpers_and_description(self):
+        rule = {'type': 'program', 'command': 'a.exe', 'trigger': 'startup'}
+        self.assertTrue(is_startup_rule(rule))
+        self.assertFalse(is_startup_rule({'url': 'https://a.example'}))
+        self.assertIn('程式啟動時', describe_rule(rule))
+        self.assertNotIn('00:00', describe_rule(rule))
+
+    def test_is_rule_enabled_defaults_to_true(self):
+        self.assertTrue(is_rule_enabled({}))
+        self.assertFalse(is_rule_enabled({'enabled': False}))
+
+    def test_startup_and_hourly_rules_are_not_duplicates(self):
+        hourly = {'type': 'program', 'command': 'a.exe', 'start_hour': 9, 'end_hour': 9}
+        startup = {'type': 'program', 'command': 'a.exe', 'trigger': 'startup'}
+        merged, added = merge_rules([hourly], [startup, dict(startup)])
+        self.assertEqual((len(merged), added), (2, 1))
 
 
 if __name__ == '__main__':

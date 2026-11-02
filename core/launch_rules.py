@@ -6,8 +6,19 @@ from typing import Any
 
 RULE_URL = 'url'
 RULE_PROGRAM = 'program'
+TRIGGER_STARTUP = 'startup'
 
 _WEEKDAY_NAMES = ('一', '二', '三', '四', '五', '六', '日')
+
+
+def is_startup_rule(rule: dict[str, Any]) -> bool:
+    """規則是否為「主程式啟動時執行」（非整點時段）。"""
+    return rule.get('trigger') == TRIGGER_STARTUP
+
+
+def is_rule_enabled(rule: dict[str, Any]) -> bool:
+    """規則是否啟用；缺少 enabled 欄位的舊規則視為啟用。"""
+    return rule.get('enabled', True) is not False
 
 
 def rule_type(rule: dict[str, Any]) -> str:
@@ -42,11 +53,14 @@ def format_weekdays(weekdays: list[int] | None) -> str:
 
 def describe_rule(rule: dict[str, Any]) -> str:
     """產生清單顯示文字，例如 ``09:00–09:00  週一至週五  [程式] python.exe a.py``。"""
-    start, end = rule.get('start_hour', 0), rule.get('end_hour', 23)
-    parts = [f"{start:02d}:00–{end:02d}:00"]
-    days = format_weekdays(rule.get('weekdays'))
-    if days:
-        parts.append(days)
+    if is_startup_rule(rule):
+        parts = ['程式啟動時']
+    else:
+        start, end = rule.get('start_hour', 0), rule.get('end_hour', 23)
+        parts = [f"{start:02d}:00–{end:02d}:00"]
+        days = format_weekdays(rule.get('weekdays'))
+        if days:
+            parts.append(days)
     if rule_type(rule) == RULE_PROGRAM:
         command = rule_target(rule)
         arguments = str(rule.get('arguments', '')).strip()
@@ -68,7 +82,7 @@ def merge_rules(
     """
     def identity(rule: dict[str, Any]) -> tuple[Any, ...]:
         return (
-            rule_key(rule), rule.get('start_hour'), rule.get('end_hour'),
+            rule_key(rule), is_startup_rule(rule), rule.get('start_hour'), rule.get('end_hour'),
             tuple(sorted(rule.get('weekdays') or [])),
         )
 

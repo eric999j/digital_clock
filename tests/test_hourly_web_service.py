@@ -155,6 +155,55 @@ class TestHourlyWebService(unittest.TestCase):
 
         self.assertEqual(config['hourly_web_reminder']['url'], '')
 
+    def test_update_config_saves_skip_safety_and_ignores_startup_rules_for_legacy_fields(self):
+        config = {'hourly_web_reminder': {}}
+        self.mock_config_mgr.load_config.return_value = config
+        rules = [{'url': 'https://s.example', 'trigger': 'startup'},
+                 {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 12}]
+
+        self.service.update_config(rules, True)
+
+        hw = config['hourly_web_reminder']
+        self.assertTrue(hw['skip_safety_check'])
+        self.assertEqual(hw['url'], 'https://a.example')
+        self.service.update_config(rules)  # None 表示維持原設定
+        self.assertTrue(hw['skip_safety_check'])
+
+    def test_run_startup_rules_launches_only_enabled_startup_rules(self):
+        rules = [
+            {'type': 'program', 'command': 'a.exe', 'trigger': 'startup'},
+            {'type': 'program', 'command': 'b.exe', 'trigger': 'startup', 'enabled': False},
+            {'type': 'program', 'command': 'c.exe', 'start_hour': 0, 'end_hour': 23},
+            {'url': 'https://s.example', 'trigger': 'startup'},
+        ]
+        with patch.object(self.service, '_launch_rule_program') as launch, \
+                patch.object(self.service, '_open_url') as open_url:
+            self.service.run_startup_rules({'hourly_web_reminder': {'url_rules': rules}})
+
+        launch.assert_called_once_with(rules[0], False)
+        open_url.assert_called_once_with('https://s.example')
+
+    def test_run_startup_rules_respects_pause(self):
+        rules = [{'type': 'program', 'command': 'a.exe', 'trigger': 'startup'}]
+        with patch.object(self.service, '_launch_rule_program') as launch:
+            self.service.run_startup_rules({'hourly_web_reminder': {'url_rules': rules, 'paused': True}})
+        launch.assert_not_called()
+
+    def test_launch_program_blocked_unless_safety_skipped(self):
+        rule = {'type': 'program', 'command': 'shutdown', 'arguments': '/r /f /t 0'}
+        with patch('services.hourly_web_service.launch_program') as launch:
+            self.service._launch_rule_program(rule)
+            launch.assert_not_called()
+            self.service._launch_rule_program(rule, skip_safety=True)
+            launch.assert_called_once_with('shutdown', '/r /f /t 0', '')
+
+    def test_check_passes_skip_safety_setting_to_launch(self):
+        rule = {'type': 'program', 'command': 'shutdown'}
+        self.service.strategy.check.return_value = [rule]
+        with patch.object(self.service, '_launch_rule_program') as launch:
+            self.service.check(now=datetime(2025, 1, 1, 9), config={'hourly_web_reminder': {'skip_safety_check': True}})
+        launch.assert_called_once_with(rule, True)
+
 
 if __name__ == '__main__':
     unittest.main()

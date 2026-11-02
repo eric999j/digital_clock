@@ -3,14 +3,27 @@ import re
 import tkinter as tk
 import webbrowser
 from collections.abc import Callable
+from pathlib import Path
 from tkinter import filedialog, ttk
+from tkinter import font as tkfont
 from typing import Any
 
-from core.launch_rules import RULE_PROGRAM, RULE_URL, describe_rule, merge_rules, rule_target, rule_type
+from core.launch_rules import (
+    RULE_PROGRAM,
+    RULE_URL,
+    TRIGGER_STARTUP,
+    describe_rule,
+    is_rule_enabled,
+    is_startup_rule,
+    merge_rules,
+    rule_target,
+    rule_type,
+)
 from core.program_launcher import LaunchError, launch_program, program_exists
 from core.program_safety import RuleCheck, check_program_rule
-from core.task_xml_importer import TaskImportError, import_task_xml
+from core.task_xml_importer import ImportResult, TaskImportError, import_task_xml
 from core.url_validator import is_safe_url
+from ui.file_drop import enable_file_drop
 from ui.theme_utils import (
     apply_themed_ttk_style,
     compute_brightness,
@@ -24,7 +37,9 @@ from ui.theme_utils import (
 
 _MIN_HEIGHT = 520
 _TYPE_LABELS = {'網頁': RULE_URL, '程式': RULE_PROGRAM}
+_TRIGGER_LABELS = {'整點時段': '', '程式啟動時': TRIGGER_STARTUP}
 _INVALID_ROW_FG = '#E05A5A'
+_CHECKED, _UNCHECKED = '☑', '☐'
 
 
 def _ensure_min_height(geometry: str) -> str:
@@ -46,6 +61,8 @@ class HourlyWebWindow(tk.Toplevel):
         self._editing_index: int | None = None
         self.theme = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
         self.current_config = current_config or {}
+        self._skip_safety_var = tk.BooleanVar(
+            self, value=bool(self.current_config.get('skip_safety_check', False)))
         self.transient(parent)
         self.title("整點啟動設定")
         self.geometry(_ensure_min_height(geometry))
@@ -84,18 +101,23 @@ class HourlyWebWindow(tk.Toplevel):
                    style='HourlyWeb.TButton').pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(btn_frame, text="儲存", command=self._on_submit,
                    style='HourlyWeb.TButton').pack(side=tk.RIGHT)
+        ttk.Checkbutton(
+            btn_frame, text="略過安全檢查（允許 shutdown 等危險指令）",
+            variable=self._skip_safety_var, command=self._on_skip_safety_changed,
+            style='HourlyWeb.TCheckbutton',
+        ).pack(side=tk.LEFT)
 
         self._create_add_form(outer)
 
         ttk.Label(
             outer,
-            text="設定整點自動啟動的網頁或程式（預設僅工作日），支援多組規則；"
-                 "也可匯入工作排程器匯出的 XML。",
+            text="整點或程式啟動時自動開啟網頁／程式，可將工作排程 XML 拖入清單匯入。",
             wraplength=520, justify=tk.LEFT, style='HourlyWeb.TLabel',
         ).pack(fill=tk.X, pady=(0, 6))
 
         # 規則清單（佔剩餘空間）
-        list_frame = ttk.LabelFrame(outer, text="啟動排程規則", padding="6", style='HourlyWeb.TLabelframe')
+        list_frame = ttk.LabelFrame(outer, text="啟動排程規則（☑ 啟用；可拖入 XML）", padding="6",
+                                    style='HourlyWeb.TLabelframe')
         list_frame.pack(fill=tk.BOTH, expand=True)
 
         list_buttons = ttk.Frame(list_frame, style='HourlyWeb.TFrame')
@@ -107,20 +129,31 @@ class HourlyWebWindow(tk.Toplevel):
 
         cols = ttk.Frame(list_frame, style='HourlyWeb.TFrame')
         cols.pack(fill=tk.BOTH, expand=True)
+        cols.rowconfigure(0, weight=1)
+        cols.columnconfigure(0, weight=1)
+        list_font = (get_mono_font_family(), 9)
         self._rules_listbox = tk.Listbox(
             cols, height=5, selectmode=tk.SINGLE,
-            bg='white', fg='black', font=(get_mono_font_family(), 9), activestyle='dotbox',
+            bg='white', fg='black', font=list_font, activestyle='dotbox',
         )
-        self._rules_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._rules_listbox.bind('<Double-Button-1>', self._open_selected_rule_url)
+        self._rules_listbox.grid(row=0, column=0, sticky='nsew')
+        self._rules_listbox.bind('<Button-1>', self._on_rules_click)
+        self._rules_listbox.bind('<Double-Button-1>', self._on_rules_double_click)
+        self._rules_listbox.bind('<space>', self._toggle_selected_rule)
+        self._rules_listbox.bind('<Shift-MouseWheel>', self._scroll_rules_horizontally)
         self._rules_listbox.bind('<Button-3>', self._show_rules_context_menu)
         sb = ttk.Scrollbar(cols, orient=tk.VERTICAL, command=self._rules_listbox.yview)
-        sb.pack(side=tk.LEFT, fill=tk.Y)
-        self._rules_listbox.configure(yscrollcommand=sb.set)
+        sb.grid(row=0, column=1, sticky='ns')
+        hsb = ttk.Scrollbar(cols, orient=tk.HORIZONTAL, command=self._rules_listbox.xview)
+        hsb.grid(row=1, column=0, sticky='ew')
+        self._rules_listbox.configure(yscrollcommand=sb.set, xscrollcommand=hsb.set)
         self._apply_rules_listbox_theme()
+        self._checkbox_width = tkfont.Font(font=list_font).measure(f"{_CHECKED} ")
+        self._file_drop_enabled = enable_file_drop([self, list_frame, self._rules_listbox], self._on_files_dropped)
 
         self._rules_menu = tk.Menu(self, tearoff=0)
         self._rules_menu.add_command(label="編輯規則", command=self._edit_rule)
+        self._rules_menu.add_command(label="啟用／停用", command=self._toggle_selected_rule)
         self._rules_menu.add_command(label="刪除此規則", command=self._remove_rule)
         self._rules_menu.configure(
             bg=self.theme.get('bg', '#F0F0F0'),
@@ -142,10 +175,17 @@ class HourlyWebWindow(tk.Toplevel):
             return lbl
 
         label(0, "類型:")
-        self._type_combo = ttk.Combobox(add_frame, values=list(_TYPE_LABELS), width=7, state="readonly")
+        type_row = ttk.Frame(add_frame, style='HourlyWeb.TFrame')
+        type_row.grid(row=0, column=1, sticky='w', pady=2)
+        self._type_combo = ttk.Combobox(type_row, values=list(_TYPE_LABELS), width=7, state="readonly")
         self._type_combo.current(0)
-        self._type_combo.grid(row=0, column=1, sticky='w', padx=(0, 4), pady=2)
+        self._type_combo.pack(side=tk.LEFT, padx=(0, 12))
         self._type_combo.bind('<<ComboboxSelected>>', self._on_type_changed)
+        ttk.Label(type_row, text="觸發:", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        self._trigger_combo = ttk.Combobox(type_row, values=list(_TRIGGER_LABELS), width=9, state="readonly")
+        self._trigger_combo.current(0)
+        self._trigger_combo.pack(side=tk.LEFT, padx=4)
+        self._trigger_combo.bind('<<ComboboxSelected>>', self._on_trigger_changed)
 
         self._target_label = label(1, "URL:")
         self._add_url_entry = ttk.Entry(add_frame, style='HourlyWeb.TEntry')
@@ -164,16 +204,20 @@ class HourlyWebWindow(tk.Toplevel):
         hour_row = ttk.Frame(add_frame, style='HourlyWeb.TFrame')
         hour_row.grid(row=3, column=0, columnspan=3, sticky='ew', pady=(4, 0))
         hours_values = [f"{h:02d}:00" for h in range(24)]
-        ttk.Label(hour_row, text="時段:", width=6, style='HourlyWeb.TLabel').pack(side=tk.LEFT)
-        ttk.Label(hour_row, text="從", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
-        self._start_combo = ttk.Combobox(hour_row, values=hours_values, width=7, state="readonly")
+        self._hours_frame = ttk.Frame(hour_row, style='HourlyWeb.TFrame')
+        self._hours_frame.pack(side=tk.LEFT)
+        ttk.Label(self._hours_frame, text="時段:", width=6, style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        ttk.Label(self._hours_frame, text="從", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        self._start_combo = ttk.Combobox(self._hours_frame, values=hours_values, width=7, state="readonly")
         self._start_combo.current(8)
         self._start_combo.pack(side=tk.LEFT, padx=4)
-        ttk.Label(hour_row, text="到", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
-        self._end_combo = ttk.Combobox(hour_row, values=hours_values, width=7, state="readonly")
+        ttk.Label(self._hours_frame, text="到", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        self._end_combo = ttk.Combobox(self._hours_frame, values=hours_values, width=7, state="readonly")
         self._end_combo.current(17)
         self._end_combo.pack(side=tk.LEFT, padx=4)
-        ttk.Label(hour_row, text="（含）", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        ttk.Label(self._hours_frame, text="（含）", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
+        self._startup_hint = ttk.Label(hour_row, text="主程式啟動時立即執行一次，不限時段與星期",
+                                       style='HourlyWeb.TLabel')
         self._submit_btn = ttk.Button(hour_row, text="新增 ＋", command=self._add_rule,
                                       style='HourlyWeb.TButton')
         self._submit_btn.pack(side=tk.RIGHT)
@@ -184,6 +228,18 @@ class HourlyWebWindow(tk.Toplevel):
 
     def _current_type(self) -> str:
         return _TYPE_LABELS.get(self._type_combo.get(), RULE_URL)
+
+    def _current_trigger(self) -> str:
+        return _TRIGGER_LABELS.get(self._trigger_combo.get(), '')
+
+    def _on_trigger_changed(self, _event: tk.Event | None = None) -> None:
+        """「程式啟動時」規則不需要時段，改顯示說明文字。"""
+        if self._current_trigger() == TRIGGER_STARTUP:
+            self._hours_frame.pack_forget()
+            self._startup_hint.pack(side=tk.LEFT)
+        else:
+            self._startup_hint.pack_forget()
+            self._hours_frame.pack(side=tk.LEFT)
 
     def _on_type_changed(self, _event: tk.Event | None = None) -> None:
         """切換類型時更新欄位標籤，並顯示／隱藏程式專用欄位。"""
@@ -232,14 +288,89 @@ class HourlyWebWindow(tk.Toplevel):
                 }]
         self._refresh_listbox(url_rules)
 
+    def _skip_safety(self) -> bool:
+        return bool(self._skip_safety_var.get())
+
+    def _check_rule(self, rule: dict[str, Any]) -> RuleCheck:
+        """依「略過安全檢查」勾選狀態檢查程式規則。"""
+        return check_program_rule(rule, skip_safety=self._skip_safety())
+
+    @staticmethod
+    def _row_text(rule: dict[str, Any]) -> str:
+        return f"{_CHECKED if is_rule_enabled(rule) else _UNCHECKED} {describe_rule(rule)}"
+
     def _refresh_listbox(self, rules: list[dict]) -> None:
         self._rules: list[dict] = list(rules)
         self._rules_listbox.delete(0, tk.END)
         for i, r in enumerate(self._rules):
-            self._rules_listbox.insert(tk.END, describe_rule(r))
-            # 程式規則未通過設定驗證或安全檢查時以紅色標示，雙擊不會執行
-            if rule_type(r) == RULE_PROGRAM and not check_program_rule(r).ok:
+            self._rules_listbox.insert(tk.END, self._row_text(r))
+            # 程式規則未通過設定驗證或安全檢查時以紅色標示，雙擊不會直接執行
+            if rule_type(r) == RULE_PROGRAM and not self._check_rule(r).ok:
                 self._rules_listbox.itemconfig(i, foreground=_INVALID_ROW_FG, selectforeground=_INVALID_ROW_FG)
+
+    def _refresh_keep_selection(self, rules: list[dict]) -> None:
+        sel = self._rules_listbox.curselection()
+        self._refresh_listbox(rules)
+        if sel and sel[0] < len(self._rules):
+            self._rules_listbox.selection_set(sel[0])
+            self._rules_listbox.activate(sel[0])
+
+    def _on_skip_safety_changed(self) -> None:
+        """切換「略過安全檢查」後重新標示規則（危險指令不再顯示紅色）。"""
+        self._refresh_keep_selection(self._rules)
+
+    def _toggle_rule(self, index: int) -> None:
+        if not 0 <= index < len(self._rules):
+            return
+        rules = list(self._rules)
+        rule = dict(rules[index])
+        if is_rule_enabled(rule):
+            rule['enabled'] = False
+        else:
+            rule.pop('enabled', None)
+        rules[index] = rule
+        self._refresh_listbox(rules)
+        self._rules_listbox.selection_set(index)
+        self._rules_listbox.activate(index)
+
+    def _toggle_selected_rule(self, _event: tk.Event | None = None) -> str:
+        sel = self._rules_listbox.curselection()
+        if sel:
+            self._toggle_rule(sel[0])
+        return 'break'
+
+    def _row_at(self, event: tk.Event) -> int | None:
+        """回傳滑鼠所在的規則列索引；點在空白處回傳 None。"""
+        if self._rules_listbox.size() == 0:
+            return None
+        index = self._rules_listbox.nearest(event.y)
+        bbox = self._rules_listbox.bbox(index)
+        if not bbox or not bbox[1] <= event.y <= bbox[1] + bbox[3]:
+            return None
+        return index
+
+    def _is_checkbox_hit(self, event: tk.Event) -> bool:
+        """點擊位置是否落在（可能已被水平捲動的）勾選方塊上。"""
+        first, last = self._rules_listbox.xview()
+        offset = first * self._rules_listbox.winfo_width() / (last - first) if last > first else 0
+        return event.x + offset <= self._checkbox_width + 6
+
+    def _on_rules_click(self, event: tk.Event) -> str | None:
+        """點擊規則左側的勾選方塊切換啟用狀態；其餘位置維持一般選取。"""
+        index = self._row_at(event)
+        if index is None or not self._is_checkbox_hit(event):
+            return None
+        self._toggle_rule(index)
+        return 'break'
+
+    def _on_rules_double_click(self, event: tk.Event) -> str | None:
+        if self._row_at(event) is not None and self._is_checkbox_hit(event):
+            return self._on_rules_click(event)  # 連按兩下勾選方塊視為兩次切換，不觸發執行
+        return self._open_selected_rule_url(event)
+
+    def _scroll_rules_horizontally(self, event: tk.Event) -> str:
+        self._rules_listbox.xview_scroll(-1 if event.delta > 0 else 1, 'units')
+        return 'break'
 
     def _editing_rule(self) -> dict[str, Any] | None:
         """回傳正在編輯的原規則；非編輯模式回傳 None。"""
@@ -254,16 +385,22 @@ class HourlyWebWindow(tk.Toplevel):
         target = self._add_url_entry.get().strip()
         if not target:
             return None
-        start_hour = int(self._start_combo.get().split(':')[0])
-        end_hour = int(self._end_combo.get().split(':')[0])
-        if start_hour > end_hour:
-            raise ValueError("結束時間不能早於開始時間。")
+        startup = self._current_trigger() == TRIGGER_STARTUP
+        if startup:
+            hours: dict[str, Any] = {'trigger': TRIGGER_STARTUP}
+        else:
+            start_hour = int(self._start_combo.get().split(':')[0])
+            end_hour = int(self._end_combo.get().split(':')[0])
+            if start_hour > end_hour:
+                raise ValueError("結束時間不能早於開始時間。")
+            hours = {'start_hour': start_hour, 'end_hour': end_hour}
 
         original = self._editing_rule() or {}
         kept: dict[str, Any] = {}
-        if original.get('weekdays'):
+        if original.get('weekdays') and not startup:
             kept['weekdays'] = original['weekdays']
-        hours = {'start_hour': start_hour, 'end_hour': end_hour}
+        if not is_rule_enabled(original):
+            kept['enabled'] = False
 
         if self._current_type() == RULE_PROGRAM:
             command = target.strip('"')
@@ -280,9 +417,11 @@ class HourlyWebWindow(tk.Toplevel):
                 **kept,
                 **hours,
             }
-            blocked = check_program_rule(rule).blocked
+            blocked = self._check_rule(rule).blocked
             if blocked:
-                raise ValueError("安全檢查未通過，無法新增此程式規則：\n" + "\n".join(f"- {m}" for m in blocked))
+                raise ValueError(
+                    "安全檢查未通過，無法新增此程式規則（可勾選左下角「略過安全檢查」）：\n"
+                    + "\n".join(f"- {m}" for m in blocked))
             return rule
         if not is_safe_url(target):
             raise ValueError("請使用以 http:// 或 https:// 開頭的有效網址。")
@@ -323,6 +462,8 @@ class HourlyWebWindow(tk.Toplevel):
             self._add_args_entry.insert(0, str(rule.get('arguments', '')))
         self._start_combo.set(f"{int(rule.get('start_hour', 0)):02d}:00")
         self._end_combo.set(f"{int(rule.get('end_hour', 23)):02d}:00")
+        self._trigger_combo.set('程式啟動時' if is_startup_rule(rule) else '整點時段')
+        self._on_trigger_changed()
         self._set_editing(True)
 
     def _add_rule(self) -> None:
@@ -407,15 +548,10 @@ class HourlyWebWindow(tk.Toplevel):
         return header + "\n" + "\n".join(f"- {issue}" for issue in issues)
 
     def _run_program_rule(self, rule: dict[str, Any]) -> None:
-        """依序做設定驗證、安全檢查、使用者確認，全部通過才啟動程式。"""
-        check = check_program_rule(rule)
+        """依序做設定驗證、安全檢查、使用者確認；安全檢查未通過時需使用者明確授權才執行。"""
+        check = self._check_rule(rule)
         if check.errors:
             self._show_error(self._format_issues("此程式規則設定不正確，無法執行：", check.errors))
-            return
-        if check.blocked:
-            self._show_error(
-                self._format_issues("安全檢查未通過，已拒絕執行：", check.blocked), title="已拒絕執行",
-            )
             return
 
         self._confirm_launch(rule, check)
@@ -424,7 +560,15 @@ class HourlyWebWindow(tk.Toplevel):
         command = rule_target(rule)
         arguments = str(rule.get('arguments', '')).strip()
         working_dir = str(rule.get('working_dir', '')).strip()
-        lines = ["檢查通過，確定要執行以下程式嗎？", "", f"程式：{command}"]
+        if check.blocked:
+            lines = [self._format_issues("安全檢查未通過：", check.blocked), "",
+                     "此程式可能影響系統，確定要授權這次手動執行嗎？",
+                     "（排程不會自動執行，除非勾選「略過安全檢查」）", ""]
+            title, yes_text = "需要授權", "授權並執行"
+        else:
+            lines = ["檢查通過，確定要執行以下程式嗎？", ""]
+            title, yes_text = "確認執行", "執行"
+        lines.append(f"程式：{command}")
         if arguments:
             lines.append(f"參數：{arguments}")
         if working_dir:
@@ -433,7 +577,7 @@ class HourlyWebWindow(tk.Toplevel):
             lines += ["", *(f"注意：{w}" for w in check.warnings)]
         themed_confirm(
             self, "\n".join(lines), lambda: self._launch_checked(rule), self.theme,
-            title="確認執行", yes_text="執行", no_text="取消",
+            title=title, yes_text=yes_text, no_text="取消",
         )
 
     def _launch_checked(self, rule: dict[str, Any]) -> None:
@@ -475,31 +619,62 @@ class HourlyWebWindow(tk.Toplevel):
             self._show_error(f"無法開啟網頁：{e}")
 
     def _import_xml(self) -> None:
-        """匯入工作排程器 XML，規則加入清單（按「儲存」後才寫入設定）。"""
+        """以檔案對話框選擇工作排程器 XML 匯入。"""
         path = filedialog.askopenfilename(
             parent=self, title="匯入工作排程器 XML",
             filetypes=[("工作排程器 XML", "*.xml"), ("所有檔案", "*.*")],
         )
-        if not path:
-            return
-        try:
-            result = import_task_xml(path)
-        except TaskImportError as e:
-            self._show_error(f"匯入失敗：{e}")
-            return
+        if path:
+            self._import_xml_files([path])
 
+    def _on_files_dropped(self, paths: list[str]) -> None:
+        """檔案拖入規則區域時匯入。"""
+        self._import_xml_files(paths)
+
+    def _import_xml_files(self, paths: list[str]) -> None:
+        """匯入工作排程器 XML，規則加入清單（按「儲存」後才寫入設定）。"""
+        multiple = len(paths) > 1
+        lines: list[str] = []
+        failures: list[str] = []
+        imported = False
+        for path in paths:
+            name = Path(path).name
+            prefix = f"{name}：" if multiple else ""
+            if Path(path).suffix.lower() != '.xml':
+                failures.append(f"{prefix}不是 .xml 檔案")
+                continue
+            try:
+                result = import_task_xml(path)
+            except TaskImportError as e:
+                failures.append(f"{prefix}{e}")
+                continue
+            imported = True
+            lines += self._merge_imported(result, prefix)
+
+        if not imported:
+            self._show_error("匯入失敗：" + "\n".join(failures))
+            return
+        lines += [f"- 匯入失敗：{f}" for f in failures]
+        themed_info(self, "\n".join(lines), self.theme, title="匯入結果", ok_text="確定")
+
+    def _merge_imported(self, result: ImportResult, prefix: str = "") -> list[str]:
+        """將匯入結果併入清單，回傳要顯示給使用者的摘要行。"""
         merged, added = merge_rules(self._rules, result.rules)
         self._refresh_listbox(merged)
         skipped = len(result.rules) - added
-        summary = f"已匯入 {added} 條規則"
+        summary = f"{prefix}已匯入 {added} 條規則"
         if skipped:
             summary += f"（{skipped} 條重複已略過）"
         lines = [summary + "，按「儲存」後生效。", *(f"- {w}" for w in result.warnings)]
+        any_blocked = False
         for rule in result.rules:
             if rule_type(rule) == RULE_PROGRAM:
-                for issue in check_program_rule(rule).blocked:
+                for issue in self._check_rule(rule).blocked:
+                    any_blocked = True
                     lines.append(f"- 未通過安全檢查（將不會執行）：{rule_target(rule)}：{issue}")
-        themed_info(self, "\n".join(lines), self.theme, title="匯入結果", ok_text="確定")
+        if any_blocked:
+            lines.append("- 若確定要執行，可勾選左下角「略過安全檢查」。")
+        return lines
 
     def _on_submit(self) -> None:
         rules = list(self._rules)
@@ -511,5 +686,5 @@ class HourlyWebWindow(tk.Toplevel):
         if pending is not None:
             self._apply_form_rule(pending)
             rules = list(self._rules)
-        self.callback(rules)
+        self.callback(rules, self._skip_safety())
         self.destroy()
