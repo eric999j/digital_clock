@@ -354,6 +354,48 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.assertNotIn('start_hour', rule)
         self.assertIn('程式啟動時', self.window._rules_listbox.get(0))
 
+    def test_trigger_options_and_workday_note(self):
+        self.assertEqual(list(self.window._trigger_combo.cget('values')), [
+            '整點時段', '程式啟動時', '每天', '週一', '週二', '週三', '週四', '週五', '週六', '週日'])
+        self.assertEqual(self.window._trigger_note.cget('text'), '* 整點時段於工作日啟動')
+
+    def _save_with_trigger(self, rule: dict, trigger: str) -> dict:
+        self.window._refresh_listbox([rule])
+        self._edit()
+        self.window._trigger_combo.set(trigger)
+        self.window._add_rule()
+        return self.window._rules[0]
+
+    def test_default_trigger_saves_no_weekdays(self):
+        self.window._add_url_entry.insert(0, 'https://a.example')
+        self.window._add_rule()
+        self.assertNotIn('weekdays', self.window._rules[0])
+
+    def test_weekday_and_every_day_triggers_save_weekdays(self):
+        base = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}
+        self.assertEqual(self._save_with_trigger(base, '週日')['weekdays'], [6])
+        self.assertEqual(self._save_with_trigger(base, '每天')['weekdays'], list(range(7)))
+
+    def test_edit_shows_matching_trigger_label(self):
+        base = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}
+        for weekdays, label in (([6], '週日'), (list(range(7)), '每天'), ([0, 1, 2, 3, 4], '整點時段'),
+                                (None, '整點時段')):
+            with self.subTest(weekdays=weekdays):
+                rule = {**base, 'weekdays': weekdays} if weekdays else base
+                self.window._refresh_listbox([rule])
+                self._edit()
+                self.assertEqual(self.window._trigger_combo.get(), label)
+
+    def test_back_to_default_trigger_drops_single_day_and_every_day(self):
+        base = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}
+        for weekdays in ([6], list(range(7))):
+            with self.subTest(weekdays=weekdays):
+                self.assertNotIn('weekdays', self._save_with_trigger({**base, 'weekdays': weekdays}, '整點時段'))
+
+    def test_default_trigger_keeps_partial_multi_day_weekdays(self):
+        rule = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9, 'weekdays': [0, 2]}
+        self.assertEqual(self._save_with_trigger(rule, '整點時段')['weekdays'], [0, 2])
+
     def test_editing_disabled_rule_keeps_it_disabled(self):
         self.window._refresh_listbox([{'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9,
                                        'enabled': False}])

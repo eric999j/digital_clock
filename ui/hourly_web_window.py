@@ -38,6 +38,9 @@ from ui.theme_utils import (
 _MIN_HEIGHT = 520
 _TYPE_LABELS = {'網頁': RULE_URL, '程式': RULE_PROGRAM}
 _TRIGGER_LABELS = {'整點時段': '', '程式啟動時': TRIGGER_STARTUP}
+_EVERY_DAY = '每天'
+_WEEKDAY_LABELS = ('週一', '週二', '週三', '週四', '週五', '週六', '週日')
+_ALL_DAYS = list(range(7))
 _INVALID_ROW_FG = '#E05A5A'
 _CHECKED, _UNCHECKED = '☑', '☐'
 
@@ -176,17 +179,22 @@ class HourlyWebWindow(tk.Toplevel):
             return lbl
 
         label(0, "類型:")
-        type_row = ttk.Frame(add_frame, style='HourlyWeb.TFrame')
-        type_row.grid(row=0, column=1, sticky='w', pady=2)
+        type_box = ttk.Frame(add_frame, style='HourlyWeb.TFrame')
+        type_box.grid(row=0, column=1, sticky='w', pady=2)
+        type_row = ttk.Frame(type_box, style='HourlyWeb.TFrame')
+        type_row.pack(anchor='w')
         self._type_combo = ttk.Combobox(type_row, values=list(_TYPE_LABELS), width=7, state="readonly")
         self._type_combo.current(0)
         self._type_combo.pack(side=tk.LEFT, padx=(0, 12))
         self._type_combo.bind('<<ComboboxSelected>>', self._on_type_changed)
         ttk.Label(type_row, text="觸發:", style='HourlyWeb.TLabel').pack(side=tk.LEFT)
-        self._trigger_combo = ttk.Combobox(type_row, values=list(_TRIGGER_LABELS), width=9, state="readonly")
+        self._trigger_combo = ttk.Combobox(type_row, values=[*_TRIGGER_LABELS, _EVERY_DAY, *_WEEKDAY_LABELS],
+                                           width=9, state="readonly")
         self._trigger_combo.current(0)
         self._trigger_combo.pack(side=tk.LEFT, padx=4)
         self._trigger_combo.bind('<<ComboboxSelected>>', self._on_trigger_changed)
+        self._trigger_note = ttk.Label(type_box, text="* 整點時段於工作日啟動", style='HourlyWeb.TLabel')
+        self._trigger_note.pack(anchor='w', pady=(2, 0))
 
         self._target_label = label(1, "URL:")
         self._add_url_entry = ttk.Entry(add_frame, style='HourlyWeb.TEntry')
@@ -232,6 +240,13 @@ class HourlyWebWindow(tk.Toplevel):
 
     def _current_trigger(self) -> str:
         return _TRIGGER_LABELS.get(self._trigger_combo.get(), '')
+
+    def _selected_weekdays(self) -> list[int] | None:
+        """觸發選「每天」或「週一」至「週日」時回傳對應星期（0=週一），否則回傳 None。"""
+        label = self._trigger_combo.get()
+        if label == _EVERY_DAY:
+            return list(_ALL_DAYS)
+        return [_WEEKDAY_LABELS.index(label)] if label in _WEEKDAY_LABELS else None
 
     def _on_trigger_changed(self, _event: tk.Event | None = None) -> None:
         """「程式啟動時」規則不需要時段，改顯示說明文字。"""
@@ -398,7 +413,11 @@ class HourlyWebWindow(tk.Toplevel):
 
         original = self._editing_rule() or {}
         kept: dict[str, Any] = {}
-        if original.get('weekdays') and not startup:
+        selected_days = self._selected_weekdays()
+        original_days = sorted(set(original.get('weekdays') or []))
+        if selected_days is not None:
+            kept['weekdays'] = selected_days
+        elif not startup and len(original_days) > 1 and original_days != _ALL_DAYS:
             kept['weekdays'] = original['weekdays']
         if not is_rule_enabled(original):
             kept['enabled'] = False
@@ -463,7 +482,16 @@ class HourlyWebWindow(tk.Toplevel):
             self._add_args_entry.insert(0, str(rule.get('arguments', '')))
         self._start_combo.set(f"{int(rule.get('start_hour', 0)):02d}:00")
         self._end_combo.set(f"{int(rule.get('end_hour', 23)):02d}:00")
-        self._trigger_combo.set('程式啟動時' if is_startup_rule(rule) else '整點時段')
+        weekdays = sorted(set(rule.get('weekdays') or []))
+        if is_startup_rule(rule):
+            trigger_label = '程式啟動時'
+        elif weekdays == _ALL_DAYS:
+            trigger_label = _EVERY_DAY
+        elif len(weekdays) == 1 and 0 <= weekdays[0] <= 6:
+            trigger_label = _WEEKDAY_LABELS[weekdays[0]]
+        else:
+            trigger_label = '整點時段'
+        self._trigger_combo.set(trigger_label)
         self._on_trigger_changed()
         self._set_editing(True)
 
