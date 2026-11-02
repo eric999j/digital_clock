@@ -39,6 +39,7 @@ _MIN_HEIGHT = 520
 _TYPE_LABELS = {'網頁': RULE_URL, '程式': RULE_PROGRAM}
 _TRIGGER_LABELS = {'整點時段': '', '程式啟動時': TRIGGER_STARTUP}
 _EVERY_DAY = '每天'
+_DEFAULT_TRIGGER = '整點時段'
 _WEEKDAY_LABELS = ('週一', '週二', '週三', '週四', '週五', '週六', '週日')
 _ALL_DAYS = list(range(7))
 _INVALID_ROW_FG = '#E05A5A'
@@ -249,7 +250,11 @@ class HourlyWebWindow(tk.Toplevel):
         return [_WEEKDAY_LABELS.index(label)] if label in _WEEKDAY_LABELS else None
 
     def _on_trigger_changed(self, _event: tk.Event | None = None) -> None:
-        """「程式啟動時」規則不需要時段，改顯示說明文字。"""
+        """「程式啟動時」規則不需要時段，改顯示說明文字；工作日註記僅在「整點時段」顯示。"""
+        if self._trigger_combo.get() == _DEFAULT_TRIGGER:
+            self._trigger_note.pack(anchor='w', pady=(2, 0))
+        else:
+            self._trigger_note.pack_forget()
         if self._current_trigger() == TRIGGER_STARTUP:
             self._hours_frame.pack_forget()
             self._startup_hint.pack(side=tk.LEFT)

@@ -359,6 +359,20 @@ class TestHourlyLaunchWindow(unittest.TestCase):
             '整點時段', '程式啟動時', '每天', '週一', '週二', '週三', '週四', '週五', '週六', '週日'])
         self.assertEqual(self.window._trigger_note.cget('text'), '* 整點時段於工作日啟動')
 
+    def test_workday_note_only_shown_for_default_trigger(self):
+        for trigger, visible in (('整點時段', True), ('程式啟動時', False), ('每天', False),
+                                 ('週日', False), ('整點時段', True)):
+            with self.subTest(trigger=trigger):
+                self.window._trigger_combo.set(trigger)
+                self.window._on_trigger_changed()
+                self.assertEqual(bool(self.window._trigger_note.winfo_manager()), visible)
+
+    def test_edit_updates_workday_note_visibility(self):
+        self.window._refresh_listbox([{'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9,
+                                       'weekdays': [6]}])
+        self._edit()
+        self.assertFalse(self.window._trigger_note.winfo_manager())
+
     def _save_with_trigger(self, rule: dict, trigger: str) -> dict:
         self.window._refresh_listbox([rule])
         self._edit()
