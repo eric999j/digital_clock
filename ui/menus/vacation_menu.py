@@ -37,11 +37,12 @@ class VacationMenu(Menu):
         """重建選單內容以反映目前狀態。"""
         self.delete(0, tk.END)
 
-        toggle_label = "結束休假" if self.logic.is_on_vacation() else "立即開始休假"
+        toggle_label = "結束勿擾" if self.logic.is_on_vacation() else "立即開始勿擾"
         self.add_command(label=toggle_label, command=self.logic.toggle_vacation)
 
         self.add_separator()
-        self.add_command(label="新增休假排程...", command=self.logic.open_vacation_schedule_window)
+        self.add_command(label="新增勿擾排程...", command=self.logic.open_vacation_schedule_window)
+        self.add_command(label="行事曆同步設定...", command=self.logic.open_calendar_sync_window)
         self.add_separator()
 
         schedules = self.logic.list_vacation_schedules()
@@ -61,7 +62,7 @@ class VacationMenu(Menu):
         upcoming.sort(key=lambda s: (s.get('start', ''), s.get('end', '')))
 
         if not upcoming:
-            self.add_command(label="(無排程休假)", state="disabled")
+            self.add_command(label="(無排程勿擾)", state="disabled")
             return
 
         for schedule in upcoming:

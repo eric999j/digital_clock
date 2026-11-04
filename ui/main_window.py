@@ -174,6 +174,10 @@ class DigitalClock(Observer):
             Events.OPEN_REMINDER_WINDOW: self._on_open_reminder_window,
             Events.OPEN_HOURLY_WEB_WINDOW: self._on_open_hourly_web_window,
             Events.OPEN_VACATION_SCHEDULE_WINDOW: self._on_open_vacation_schedule_window,
+            Events.OPEN_CALENDAR_SYNC_WINDOW: self._on_open_calendar_sync_window,
+            Events.CALENDAR_EVENT_UPCOMING: self._on_calendar_event_upcoming,
+            Events.CALENDAR_EVENT_STARTED: self._on_calendar_event_started,
+            Events.CALENDAR_EVENT_ENDED: self._on_calendar_event_ended,
             Events.SCREENSHOT_TRIGGERED: self._on_screenshot_triggered,
         }
 
@@ -350,15 +354,23 @@ class DigitalClock(Observer):
             logger.warning("Error updating reminder menu: %s", e)
 
     def _on_vacation_toggled(self, is_vacation: bool, *args) -> None:
+        # 自動休假（排程／行事曆）不經 UI，需同步休假相關欄位，避免之後的延遲儲存以舊值覆蓋
+        fresh = self.logic.get_config()
+        for key in ('on_vacation', 'on_vacation_source', 'vacation_previous_state',
+                    'reminder_paused', 'hourly_web_reminder'):
+            if key in fresh:
+                self.config[key] = fresh[key]
+            else:
+                self.config.pop(key, None)
         # 委派 VacationMenu 自行刷新，避免直接操作 cascade 索引
         self._update_vacation_menu()
 
     def _on_vacation_schedule_added(self, *args) -> None:
-        self._show_themed_info("休假排程已新增！")
+        self._show_themed_info("勿擾排程已新增！")
         self._update_vacation_menu()
 
     def _on_vacation_schedule_deleted(self, *args) -> None:
-        self._show_themed_info("休假排程已刪除。")
+        self._show_themed_info("勿擾排程已刪除。")
         self._update_vacation_menu()
 
     def _on_vacation_schedule_updated(self, *args) -> None:
@@ -421,6 +433,67 @@ class DigitalClock(Observer):
                 logger.error("Error opening vacation schedule window: %s", e)
 
         self.root.after_idle(open_window)
+
+    def _on_open_calendar_sync_window(self, *args) -> None:
+        """開啟行事曆同步設定視窗。"""
+        from ui.calendar_sync_window import CalendarSyncWindow
+
+        def open_window() -> None:
+            try:
+                CalendarSyncWindow(
+                    self.root,
+                    self.logic.get_calendar_sync_settings(),
+                    self._save_calendar_sync_settings,
+                    self.logic.test_calendar_connection,
+                    self._get_current_theme(),
+                )
+            except Exception as e:
+                logger.error("Error opening calendar sync window: %s", e)
+
+        self.root.after_idle(open_window)
+
+    def _save_calendar_sync_settings(
+        self, enabled: bool, ics_url: str, refresh_minutes: int, lead_minutes: int
+    ) -> None:
+        """儲存行事曆同步設定，並只同步該區塊到記憶體設定，避免被延遲儲存覆蓋。"""
+        self.logic.update_calendar_sync_settings(enabled, ics_url, refresh_minutes, lead_minutes)
+        self.config['calendar_sync'] = self.logic.get_config().get('calendar_sync', {})
+
+    def _show_calendar_popup(self, message: str, title: str) -> None:
+        from ui.popup_utils import show_reminder_popup_window
+        theme = self._get_current_theme()
+        self.root.after_idle(lambda: show_reminder_popup_window(
+            self.root, message, theme, title=title, ok_text="確定"
+        ))
+
+    def _on_calendar_event_upcoming(self, summary: str = "", minutes: int = 0, *args) -> None:
+        name = f"「{summary}」" if summary else "行事曆事件"
+        self._show_calendar_popup(f"{name}約 {minutes} 分鐘後開始，將自動進入勿擾模式", "行事曆預告")
+
+    def _on_calendar_event_started(self, summary: str = "", *args) -> None:
+        from ui.popup_utils import show_reminder_popup_window
+        self._close_calendar_popup()
+        theme = self._get_current_theme()
+
+        def show() -> None:
+            self._calendar_popup = show_reminder_popup_window(
+                self.root, "會議中...", theme, title="行事曆", ok_text="確定"
+            )
+
+        self.root.after_idle(show)
+
+    def _on_calendar_event_ended(self, *args) -> None:
+        self._close_calendar_popup()
+
+    def _close_calendar_popup(self) -> None:
+        """關閉仍存在的「會議中」視窗。"""
+        popup = getattr(self, '_calendar_popup', None)
+        self._calendar_popup = None
+        try:
+            if popup is not None and popup.winfo_exists():
+                popup.destroy()
+        except tk.TclError:
+            logger.debug("Calendar popup already destroyed")
 
     def _open_vacation_schedule_editor(self, schedule: dict[str, Any]) -> None:
         """排程選單關閉後開啟編輯視窗。"""
@@ -664,7 +737,7 @@ class DigitalClock(Observer):
         detail = f"日期範圍: {start} ~ {end}"
         if note:
             detail += f"\n備註: {note}"
-        msg = f"您確定要刪除以下休假排程嗎？\n\n{detail}"
+        msg = f"您確定要刪除以下勿擾排程嗎？\n\n{detail}"
 
         from ui.popup_utils import show_confirm_popup_window
         theme = self._get_current_theme()

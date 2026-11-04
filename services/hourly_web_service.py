@@ -71,7 +71,7 @@ class HourlyWebService:
     def run_startup_rules(self, config: dict[str, Any] | None = None) -> None:
         """主程式啟動時執行所有啟用的「程式啟動時」規則（不受時段與星期限制）。"""
         hourly_config = (config if config is not None else self.config).get('hourly_web_reminder', {})
-        if hourly_config.get('paused', False):
+        if hourly_config.get('paused', False) or (config if config is not None else self.config).get('on_vacation', False):
             return
         skip_safety = bool(hourly_config.get('skip_safety_check', False))
         seen: set[tuple[str, ...]] = set()
@@ -97,6 +97,8 @@ class HourlyWebService:
         current_time = now if now is not None else datetime.now()
         config_data = config if config is not None else self.config
         hourly_config = config_data.get('hourly_web_reminder', {})
+        if config_data.get('on_vacation', False):
+            return
 
         rules = self.strategy.check(hourly_config, current_time)
         if not rules:

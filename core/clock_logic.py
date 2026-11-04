@@ -15,6 +15,7 @@ from services.pause_manager import PauseManager
 from services.pomodoro_service import PomodoroService
 from services.reminder_service import ReminderService
 from services.timezone_service import TimezoneService, ZoneTime
+from services.calendar_sync_service import CalendarSyncService
 from services.vacation_schedule_service import VacationScheduleService
 
 if TYPE_CHECKING:
@@ -68,6 +69,13 @@ class ClockLogic:
             self.pause_manager,
         )
 
+        # 行事曆同步服務（Outlook ICS → 自動休假）
+        self.calendar_sync_service = CalendarSyncService(
+            config_manager,
+            self.notify_observers,
+            self.pause_manager,
+        )
+
         self.is_hidden: bool = False
 
     def add_observer(self, observer: Observer) -> None:
@@ -95,6 +103,7 @@ class ClockLogic:
         """啟動所有背景服務和初始檢查。"""
         self.reminder_service.remove_expired_reminders()
         self.vacation_schedule_service.check()
+        self.calendar_sync_service.start()
         self.hourly_service.run_startup_rules()
         self.keyboard_service.start()
 
@@ -287,14 +296,16 @@ class ClockLogic:
             now: 可選的當前時間，用於同一個 tick 共享時間快照
         """
         check_time = now or datetime.now()
+
+        # 勿擾來源（排程／行事曆）須先判斷，後續服務才會讀到最新的暫停狀態
+        self.vacation_schedule_service.check(now=check_time)
+        self.calendar_sync_service.check(now=check_time)
+
         # 熱路徑：使用唯讀快取避免每秒 deepcopy 整份 config
         config_snapshot = self.config_manager.load_config(read_only=True)
 
         # 整點網頁提醒
         self.hourly_service.check(now=check_time, config=config_snapshot)
-
-        # 休假排程（自動進入/離開休假模式、清理過期排程）
-        self.vacation_schedule_service.check(now=check_time, config=config_snapshot)
 
         # 一般提醒
         is_paused = self.pause_manager.get_pause_state('reminder', config=config_snapshot)
@@ -343,6 +354,26 @@ class ClockLogic:
         """請求 UI 開啟休假排程設定視窗（透過事件解耦）。"""
         self.notify_observers(Events.OPEN_VACATION_SCHEDULE_WINDOW)
 
+    def open_calendar_sync_window(self) -> None:
+        """請求 UI 開啟行事曆同步設定視窗（透過事件解耦）。"""
+        self.notify_observers(Events.OPEN_CALENDAR_SYNC_WINDOW)
+
+    def get_calendar_sync_settings(self) -> dict[str, Any]:
+        """取得行事曆同步設定。"""
+        return self.calendar_sync_service.get_settings()
+
+    def update_calendar_sync_settings(
+        self, enabled: bool, ics_url: str, refresh_minutes: int, lead_minutes: int
+    ) -> None:
+        """更新行事曆同步設定並立即重新同步。"""
+        self.calendar_sync_service.update_settings(
+            enabled, ics_url, refresh_minutes, lead_minutes
+        )
+
+    def test_calendar_connection(self, ics_url: str) -> int:
+        """測試 ICS 連線，回傳事件數；失敗拋出例外（可在背景執行緒呼叫）。"""
+        return self.calendar_sync_service.test_connection(ics_url)
+
     def open_reminder_window(self, reminder_to_edit: dict[str, Any] | None = None) -> None:
         """請求 UI 開啟設定提醒的視窗（透過事件解耦，由 UI Observer 實作）。"""
         self.notify_observers(Events.OPEN_REMINDER_WINDOW, reminder_to_edit)
@@ -361,6 +392,9 @@ class ClockLogic:
 
         if hasattr(self, 'pomodoro'):
             self.pomodoro.stop()
+
+        if hasattr(self, 'calendar_sync_service'):
+            self.calendar_sync_service.stop()
 
         # 關閉視窗
         if hasattr(self.ui, 'root'):

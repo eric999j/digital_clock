@@ -41,11 +41,17 @@ class Events:
     VACATION_SCHEDULE_DELETED = 'vacation_schedule_deleted'
     VACATION_SCHEDULE_UPDATED = 'vacation_schedule_updated'
 
+    # 行事曆同步事件
+    CALENDAR_EVENT_UPCOMING = 'calendar_event_upcoming'
+    CALENDAR_EVENT_STARTED = 'calendar_event_started'
+    CALENDAR_EVENT_ENDED = 'calendar_event_ended'
+
     # UI 開窗請求（由 ClockLogic 發出，UI Observer 處理）
     OPEN_REMINDER_WINDOW = 'open_reminder_window'
     OPEN_HOURLY_WEB_WINDOW = 'open_hourly_web_window'
     OPEN_VACATION_SCHEDULE_WINDOW = 'open_vacation_schedule_window'
     OPEN_COUNTDOWN_WINDOW = 'open_countdown_window'
+    OPEN_CALENDAR_SYNC_WINDOW = 'open_calendar_sync_window'
 
     # 系統快捷鍵事件
     SCREENSHOT_TRIGGERED = 'screenshot_triggered'

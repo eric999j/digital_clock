@@ -137,7 +137,7 @@ class VacationScheduleService:
             self.notify(Events.VACATION_SCHEDULE_UPDATED, existing)
             return existing
 
-        raise ValueError("找不到要更新的休假排程")
+        raise ValueError("找不到要更新的勿擾排程")
 
     def check(
         self,

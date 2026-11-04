@@ -37,7 +37,7 @@ class VacationScheduleWindow(tk.Toplevel):
         self.update_callback = update_callback
         self.theme = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
         self.transient(parent)
-        self.title("編輯休假排程" if schedule_to_edit else "新增休假排程")
+        self.title("編輯勿擾排程" if schedule_to_edit else "新增勿擾排程")
         self.geometry(geometry)
         self.resizable(False, False)
         # 不使用 grab_set，讓主時鐘仍可接收拖曳事件
@@ -48,7 +48,7 @@ class VacationScheduleWindow(tk.Toplevel):
             self._create_widgets()
             self._populate_options()
         except Exception as e:
-            themed_error(parent, f"無法建立休假排程視窗：{e}", self.theme, title="錯誤")
+            themed_error(parent, f"無法建立勿擾排程視窗：{e}", self.theme, title="錯誤")
             self.destroy()
 
     def _apply_theme(self) -> None:
@@ -89,7 +89,7 @@ class VacationScheduleWindow(tk.Toplevel):
         self.single_day_var = tk.BooleanVar(self, value=self._is_single_day_schedule())
         ttk.Checkbutton(
             frame,
-            text="單日休假（只休開始日期當天，免設結束日期）",
+            text="單日勿擾（只勿擾開始日期當天，免設結束日期）",
             variable=self.single_day_var,
             command=self._on_single_day_toggled,
             style='Vacation.TCheckbutton',
@@ -227,7 +227,7 @@ class VacationScheduleWindow(tk.Toplevel):
         try:
             if self.schedule_to_edit:
                 if self.update_callback is None:
-                    raise ValueError("無法更新休假排程")
+                    raise ValueError("無法更新勿擾排程")
                 self.update_callback(self.schedule_to_edit, start.isoformat(), end.isoformat(), note)
             else:
                 self.callback(start.isoformat(), end.isoformat(), note)

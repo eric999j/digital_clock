@@ -138,7 +138,7 @@ class TestContextMenuIntegration(unittest.TestCase):
         labels = self._labels(self.clock.context_menu)
         entries = [label for label in labels if label != "---"]
 
-        self.assertEqual(entries, ["休假模式", "提醒", "整點啟動", "效率提升", "時鐘設定", "離開"])
+        self.assertEqual(entries, ["勿擾模式", "提醒", "整點啟動", "效率提升", "時鐘設定", "離開"])
         # 不應出現連續或頭尾的分隔線
         self.assertNotEqual(labels[0], "---")
         self.assertNotEqual(labels[-1], "---")

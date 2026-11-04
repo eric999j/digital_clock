@@ -26,7 +26,7 @@ class ContextMenu(Menu):
         # 為避免 main_window 需要重新排序，直接在此加入 placeholder cascade
         placeholder = Menu(self, tearoff=0)
         placeholder.add_command(label="載入中…", state="disabled")
-        self.add_cascade(label="休假模式", menu=placeholder)
+        self.add_cascade(label="勿擾模式", menu=placeholder)
         self._vacation_placeholder = placeholder
         self.add_separator()
 

@@ -30,6 +30,13 @@ class TestHourlyWebService(unittest.TestCase):
         self.service.check(now=now, config=config_snapshot)
         self.service.strategy.check.assert_called_once_with(config_snapshot['hourly_web_reminder'], now)
 
+    def test_check_skips_when_on_vacation(self):
+        now = datetime(2025, 1, 1, 13, 0, 0)
+        config_snapshot = {'on_vacation': True, 'hourly_web_reminder': {'paused': False}}
+
+        self.service.check(now=now, config=config_snapshot)
+        self.service.strategy.check.assert_not_called()
+
     def test_check_loads_config_without_snapshot(self):
         now = datetime(2025, 1, 1, 9, 0, 0)
         loaded_config = {

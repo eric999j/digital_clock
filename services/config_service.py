@@ -115,6 +115,12 @@ class ConfigManager:
             },
             "reminders": [],
             "vacation_schedules": [],
+            "calendar_sync": {
+                "enabled": False,
+                "ics_url": "",  # Outlook 發佈的 ICS 連結（含密鑰，僅存於本機設定檔）
+                "refresh_minutes": 15,
+                "lead_minutes": 10  # 事件開始前幾分鐘預告（0 = 不預告）
+            },
             "hourly_web_reminder": {
                 "enabled": False,
                 "url": "",

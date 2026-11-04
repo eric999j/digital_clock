@@ -10,6 +10,8 @@ requires-python = ">=3.13"
 dependencies = [
     "pynput>=1.8.1",
     "tkinterdnd2>=0.4.2",
+    "icalendar>=6.0",
+    "recurring-ical-events>=3.0",
     "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
