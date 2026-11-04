@@ -4,7 +4,7 @@
 當應用程式最大化時，自動隱藏的工具列雖然釋放了螢幕空間，卻也讓我們無法隨時看到時間。此專案旨在解決這個問題，提供一個簡潔、不干擾且永遠在最上層的桌面時鐘，並整合番茄鐘、倒數計時、提醒、整點啟動等小工具。
 
 - 環境：Python 3.13+（tkinter）
-- 依賴：`pynput`（全域鍵盤監聽）；`tkinterdnd2`（選用，整點啟動視窗拖入 XML 匯入，未安裝時改用按鈕匯入）；`icalendar` + `recurring-ical-events`（Outlook 行事曆 ICS 同步，缺少時停用該功能）；Windows 另需 `tzdata`（多時區，已列入 `requirements.txt`）
+- 依賴（皆列於 `requirements.txt`）：`pynput`（全域鍵盤監聽）；`tkinterdnd2`（選用，整點啟動視窗拖入 XML 匯入，未安裝時改用按鈕匯入）；`icalendar` + `recurring-ical-events`（Outlook 行事曆 ICS 同步，缺少時停用該功能）；Windows 另需 `tzdata`（多時區）
 
 ---
 
@@ -53,8 +53,14 @@
 - 可獨立暫停/啟動。
 
 ### 勿擾模式
-- 一鍵「立即開始勿擾 / 結束勿擾」：進入勿擾時停止番茄鐘並暫停提醒與整點啟動，結束後恢復切換前的暫停狀態。
+- 一鍵「立即開始勿擾 / 結束勿擾」：進入勿擾時停止番茄鐘並暫停提醒與整點啟動（含「程式啟動時」規則），結束後恢復切換前的暫停狀態。
 - **勿擾排程**：設定日期範圍與備註（勾選「單日勿擾」只需設定開始日期，免填結束日期），到期自動進入/離開勿擾；已過期或無效的排程自動清除。
+- **行事曆同步（Outlook ICS）**：於「勿擾模式 › 行事曆同步設定…」貼上 Outlook 網頁版發佈行事曆的 ICS 連結（僅接受 https，`webcal://` 會自動轉換），啟用後會在行事曆事件進行中自動進入勿擾，事件結束自動離開。
+  - 背景執行緒依「同步間隔」（預設 15 分鐘）抓取事件（涵蓋前 1 天至後 7 天，含週期事件、略過已取消的事件），重疊或相接的事件合併為一段；抓取失敗時沿用上次的快取。
+  - 事件開始時彈出「會議中...」提示，結束時自動關閉；開始前 N 分鐘（預設 10，0 = 不預告）會預告「將自動進入勿擾模式」。
+  - 只會結束由行事曆自己啟動的勿擾；手動開啟的勿擾不會被自動關閉，且手動勿擾期間不重複觸發。
+  - 設定視窗提供「測試連線」，回報解析到的事件數。ICS 連結含密鑰，僅存於本機設定檔，日誌不記錄完整網址。
+  - ICS 由 Outlook 發佈後可能延遲數分鐘至數小時，加上同步間隔，新增的會議不一定立刻生效。
 
 ### 智慧截圖躲避
 以 `pynput` 在背景執行緒監聽 PrtScn 或 `Win+Shift+S`，偵測到截圖時自動隱藏（預設 2 秒），避免被攝入畫面；背景事件透過 `root.after` 安全交回主 UI 執行緒。
@@ -70,7 +76,7 @@
 ## 右鍵選單
 
 ```
-勿擾模式 ›  立即開始勿擾 / 新增勿擾排程… / 既有排程
+勿擾模式 ›  立即開始勿擾 / 新增勿擾排程… / 行事曆同步設定… / 既有排程
 提醒 ›      新增提醒… / 暫停 / 既有提醒（編輯、刪除）
 整點啟動 ›  設定 / 暫停
 效率提升 ›
@@ -98,6 +104,19 @@
 pip install -r requirements.txt
 python main.py
 ```
+
+### 自訂 BAT 雙擊啟動（Windows，無主控台視窗）
+已自行安裝 Python 與相依套件時，可建立自己的 `.bat`，以 `pythonw.exe` 背景啟動（不會出現命令列視窗）；路徑請換成自己的環境：
+
+```bat
+@echo off
+cd /d "<專案資料夾>"
+start "" "<Python 安裝資料夾>\pythonw.exe" "main.py"
+```
+
+- `cd /d` 切換到專案資料夾，讓 `main.py` 與相對路徑正確。
+- `start ""` 啟動後立即返回，BAT 視窗隨即關閉。
+- 要開機自動啟動，可將此 BAT 的捷徑放入 `shell:startup` 資料夾。
 
 ---
 
@@ -129,7 +148,7 @@ flowchart TB
         direction LR
         WINDOW["main_window.py<br/>DigitalClock (Observer)"]
         MENUS["menus/<br/>右鍵選單"]
-        DIALOGS["設定視窗與彈窗<br/>reminder / hourly_web / vacation / countdown / popup_utils"]
+        DIALOGS["設定視窗與彈窗<br/>reminder / hourly_web / vacation / calendar_sync / countdown / popup_utils"]
     end
 
     subgraph Core_Layer["核心層 (core/)"]
@@ -142,12 +161,12 @@ flowchart TB
     subgraph Service_Layer["服務層 (services/)"]
         direction LR
         POMO["pomodoro / countdown"]
-        REMS["reminder / hourly_web / vacation_schedule"]
+        REMS["reminder / hourly_web / vacation_schedule / calendar_sync"]
         MISC["pause_manager / timezone / keyboard"]
         CFG["config_service<br/>ConfigManager (Singleton)"]
     end
 
-    STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 番茄鐘 / 休假排程"]
+    STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 番茄鐘 / 勿擾排程 / 行事曆"]
 
     MAIN --> WINDOW
     WINDOW --> MENUS
@@ -182,8 +201,9 @@ digital_clock/
 │   ├── countdown_service.py     # 倒數計時引擎
 │   ├── reminder_service.py      # 單次/週期提醒、稍後提醒
 │   ├── hourly_web_service.py    # 整點啟動（網頁/程式）
-│   ├── vacation_schedule_service.py  # 休假排程
-│   ├── pause_manager.py         # 提醒/整點啟動/休假暫停狀態
+│   ├── vacation_schedule_service.py  # 勿擾排程
+│   ├── calendar_sync_service.py # Outlook ICS 同步，事件進行中自動勿擾
+│   ├── pause_manager.py         # 提醒/整點啟動/勿擾暫停狀態
 │   ├── timezone_service.py      # 多時區
 │   └── keyboard_service.py      # 截圖快捷鍵監聽
 ├── strategies/                  # BaseStrategy 及各可替換演算法
@@ -193,7 +213,8 @@ digital_clock/
 │   ├── theme_utils.py           # 色彩計算、ttk 樣式、設計 token
 │   ├── dpi.py                   # 高 DPI 支援
 │   ├── window_bounds.py         # 視窗位置限制
-│   ├── *_window.py              # 提醒/整點啟動/休假排程/倒數 設定視窗
+│   ├── file_drop.py             # 選用的拖放支援（tkinterdnd2）
+│   ├── *_window.py              # 提醒/整點啟動/勿擾排程/行事曆同步/倒數 設定視窗
 │   └── menus/                   # 右鍵選單元件
 ├── tests/                       # unittest
 ├── package_*.{bat,sh}           # 各平台打包腳本
@@ -206,7 +227,7 @@ digital_clock/
 |------|------|------|
 | Observer | `core/observer.py` | `DigitalClock` 實作 `Observer`，訂閱 `ClockLogic` 以 `Events` 常數發出的事件 |
 | Mediator | `core/clock_logic.py` | `ClockLogic` 協調各服務，服務透過 `notify_callback` 回報 |
-| Strategy | `strategies/` | 提醒、整點啟動、番茄鐘階段、休假排程的判斷邏輯可替換，須繼承 `BaseStrategy` |
+| Strategy | `strategies/` | 提醒、整點啟動、番茄鐘階段、勿擾排程、行事曆事件的判斷邏輯可替換，須繼承 `BaseStrategy` |
 | Singleton | `services/config_service.py` | `ConfigManager` 確保設定管理器唯一 |
 | DI Container | `core/container.py` | 以名稱註冊/取得服務 |
 
@@ -222,9 +243,11 @@ digital_clock/
 ```bash
 python -m unittest discover -s tests      # 執行全部測試
 pip install -e ".[dev]"                   # 安裝 ruff、coverage
-python -m ruff check ui core services strategies tests main.py
+python -m ruff check .
 ```
 
+- CI（`.github/workflows/ci.yml`）：ruff 檢查，以及 Ubuntu（xvfb）與 Windows 上的 unittest + coverage。
+- 非 Windows 平台不支援 `-transparentcolor` 等 Windows 視窗屬性，程式會略過；少數測試依賴 Windows 行為（如 `shutdown.exe`），在其他平台自動略過。
 - 測試使用標準庫 `unittest`；涉及 `ConfigManager` 時須先 `ConfigManager._instance = None` 重設單例，並 mock `Path.home()`。
 - 部分 UI 測試需要可用的顯示器，無顯示器時會自動略過。
 - 更多開發約定見 [AGENTS.md](AGENTS.md)。
