@@ -523,7 +523,10 @@ class DigitalClock(Observer):
             # 在 Linux 上，透明度依賴於視窗管理員的支援
             self.transparent_color = 'black'
             self.root.config(bg=self.transparent_color)
-            self.root.wm_attributes('-transparentcolor', self.transparent_color)
+            try:
+                self.root.wm_attributes('-transparentcolor', self.transparent_color)
+            except tk.TclError:
+                logger.debug("Window manager does not support -transparentcolor")
 
         self.root.protocol("WM_DELETE_WINDOW", self.logic.on_close)
         self._adjust_window_width(is_initial=True)

@@ -14,7 +14,7 @@ import shlex
 import shutil
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 _WINDOWS_EXTENSIONS = frozenset({'.exe', '.bat', '.cmd', '.com'})
@@ -165,7 +165,7 @@ def _check_safety(
     blocked: list[str] = []
     warnings: list[str] = []
 
-    name = Path(resolved or command).stem.lower()
+    name = PureWindowsPath(resolved or command).stem.lower()
     if name in _BLOCKED_PROGRAMS:
         blocked.append(f"「{name}」會直接影響系統（關機、格式化或磁碟操作）。")
     if name in _INTERPRETERS:

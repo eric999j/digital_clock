@@ -20,6 +20,9 @@ class TestContextMenuIntegration(unittest.TestCase):
         # 無頭 CI（xvfb）上真實 pynput 監聽可能卡死，右鍵選單測試不需要它
         cls._keyboard = patch("services.keyboard_service.KeyboardService.start")
         cls._keyboard.start()
+        # 初始化失敗時 DigitalClock 會跳 messagebox，無頭環境會永遠阻塞
+        cls._showerror = patch("ui.main_window.messagebox.showerror")
+        cls._showerror.start()
         ConfigManager._instance = None
         try:
             from ui.main_window import DigitalClock
@@ -28,6 +31,7 @@ class TestContextMenuIntegration(unittest.TestCase):
             container.register("config_manager", ConfigManager())
             cls.clock = DigitalClock(container)
         except tk.TclError as e:
+            cls._showerror.stop()
             cls._keyboard.stop()
             cls._home.stop()
             cls._tmp.cleanup()
@@ -40,6 +44,7 @@ class TestContextMenuIntegration(unittest.TestCase):
             cls.clock.logic.on_close()
         finally:
             ConfigManager._instance = None
+            cls._showerror.stop()
             cls._keyboard.stop()
             cls._home.stop()
             cls._tmp.cleanup()

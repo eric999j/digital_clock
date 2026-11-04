@@ -1,3 +1,4 @@
+import sys
 import tempfile
 import tkinter as tk
 import unittest
@@ -131,6 +132,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         confirm.assert_not_called()
         self.assertIn('設定不正確', self.errors[0])
 
+    @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
     def test_double_click_unsafe_program_requires_authorization(self):
         launch, confirm = self._double_click_rule(
             {'type': 'program', 'command': 'shutdown.exe', 'arguments': '/s', 'start_hour': 9, 'end_hour': 9})
@@ -164,6 +166,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.assertTrue(colors[0])
         self.assertEqual((colors[1], colors[2]), ('', ''))
 
+    @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
     def test_adding_unsafe_program_rule_is_rejected(self):
         self._select_type('程式')
         self.window._add_url_entry.insert(0, 'shutdown.exe')
@@ -277,6 +280,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         return {'type': 'program', 'command': 'shutdown', 'arguments': '/r /f /t 0',
                 'start_hour': 23, 'end_hour': 23, 'weekdays': [6]}
 
+    @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
     def test_skip_safety_checkbox_controls_red_rows_and_is_saved(self):
         self.window._refresh_listbox([self._shutdown_rule()])
         listbox = self.window._rules_listbox
@@ -289,6 +293,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.window._on_submit()
         self.callback.assert_called_once_with([self._shutdown_rule()], True)
 
+    @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
     def test_skip_safety_allows_adding_and_runs_without_authorization_prompt(self):
         self._select_type('程式')
         self.window._add_url_entry.insert(0, 'shutdown.exe')
@@ -331,6 +336,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.window._toggle_rule(0)
         self.assertNotIn('enabled', self.window._rules[0])
 
+    @unittest.skipUnless(sys.platform == 'win32', '無視窗管理員時 event_generate 不可靠')
     def test_click_on_checkbox_toggles_but_text_click_does_not(self):
         self.window._refresh_listbox([{'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}])
         self.window.deiconify()
