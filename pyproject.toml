@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "digital_clock"
 version = "2.0.0"
 description = "桌面數位時鐘 — 支援番茄鐘、提醒、整點網頁、截圖自動隱藏"
 requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "pynput>=1.8.1",
     "tkinterdnd2>=0.4.2",

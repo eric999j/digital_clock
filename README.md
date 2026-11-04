@@ -254,4 +254,22 @@ python -m ruff check .
 
 ---
 
+## 授權與第三方套件
+
+本專案原始碼（`core/`、`services/`、`strategies/`、`ui/`、`tests/`、`main.py`）一律以 [MIT License](LICENSE) 授權。執行時相依的第三方套件各自遵循自己的授權，未隨原始碼散佈，也不改變本專案的授權：
+
+| 套件 | 授權 |
+|------|------|
+| `pynput` | LGPL-3.0 |
+| `recurring-ical-events`、`x-wr-timezone`（間接相依） | LGPL-3.0-or-later |
+| `icalendar` | BSD-2-Clause |
+| `tkinterdnd2` | MIT |
+| `tzdata` | Apache-2.0 |
+| `python-dateutil`、`tzlocal`、`six`（間接相依） | BSD / Apache-2.0、MIT、MIT |
+
+- 以 `pip` 安裝、由使用者自行取得這些套件時，MIT 與 LGPL 相容，無需額外處理。
+- **散佈 PyInstaller 打包的執行檔時**，會一併包含上述 LGPL 套件，須隨附各套件的授權文字，並讓使用者可取得該套件原始碼且能替換其版本（本專案以 onefile 打包，若要分發請特別注意）。
+
+---
+
 本專案適合需要極簡、穩定、可擴充的桌面時鐘解決方案的使用者與開發者。
