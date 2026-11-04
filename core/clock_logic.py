@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 from core.events import Events
 from core.observer import Observer
+from services.calendar_sync_service import CalendarSyncService
 from services.config_service import ConfigManager
 from services.countdown_service import CountdownService
 from services.hourly_web_service import HourlyWebService
@@ -15,7 +16,6 @@ from services.pause_manager import PauseManager
 from services.pomodoro_service import PomodoroService
 from services.reminder_service import ReminderService
 from services.timezone_service import TimezoneService, ZoneTime
-from services.calendar_sync_service import CalendarSyncService
 from services.vacation_schedule_service import VacationScheduleService
 
 if TYPE_CHECKING:
@@ -298,7 +298,9 @@ class ClockLogic:
         check_time = now or datetime.now()
 
         # 勿擾來源（排程／行事曆）須先判斷，後續服務才會讀到最新的暫停狀態
-        self.vacation_schedule_service.check(now=check_time)
+        self.vacation_schedule_service.check(
+            now=check_time, config=self.config_manager.load_config(read_only=True)
+        )
         self.calendar_sync_service.check(now=check_time)
 
         # 熱路徑：使用唯讀快取避免每秒 deepcopy 整份 config

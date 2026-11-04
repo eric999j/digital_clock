@@ -41,7 +41,8 @@ jobs:
       - name: Run unittests with coverage (Linux)
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a python -X faulthandler -m coverage run -m unittest discover -v -s tests
+          # 卡住時以 SIGABRT 讓 faulthandler 印出所有執行緒堆疊
+          xvfb-run -a timeout -s ABRT 600 python -X faulthandler -m coverage run -m unittest discover -v -s tests
           python -m coverage xml
           python -m coverage report
 
