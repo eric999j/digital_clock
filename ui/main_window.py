@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 from core.clock_logic import ClockLogic
 from core.events import Events
 from core.observer import Observer
+from core.url_validator import is_safe_url
 from services.countdown_service import CountdownService
 from ui.dpi import get_scale_factor, scale_px
 from ui.menus.context_menu import ContextMenu
@@ -94,6 +95,8 @@ class DigitalClock(Observer):
         self._char_animations: dict[int, dict[str, Any]] = {}  # 每個字元位置的動畫狀態
         self._background_item: int | None = None
         self._reminder_popups: list[tk.Toplevel] = []
+        self._todo_window: tk.Toplevel | None = None
+        self._todo_pending: int = self.logic.todo_service.pending_count()
         self._last_logic_tick: datetime | None = None
 
         # --- 時鐘下方資訊列（倒數計時、多時區）---
@@ -175,6 +178,9 @@ class DigitalClock(Observer):
             Events.OPEN_HOURLY_WEB_WINDOW: self._on_open_hourly_web_window,
             Events.OPEN_VACATION_SCHEDULE_WINDOW: self._on_open_vacation_schedule_window,
             Events.OPEN_CALENDAR_SYNC_WINDOW: self._on_open_calendar_sync_window,
+            Events.OPEN_TODO_WINDOW: self._on_open_todo_window,
+            Events.TODO_UPDATED: self._on_todo_updated,
+            Events.TODO_DUE: self._on_todo_due,
             Events.CALENDAR_EVENT_UPCOMING: self._on_calendar_event_upcoming,
             Events.CALENDAR_EVENT_STARTED: self._on_calendar_event_started,
             Events.CALENDAR_EVENT_ENDED: self._on_calendar_event_ended,
@@ -412,6 +418,83 @@ class DigitalClock(Observer):
                 logger.error("Error opening hourly web window: %s", e)
 
         self.root.after_idle(open_window)
+
+    def _live_todo_window(self) -> tk.Toplevel | None:
+        """回傳仍存在的待辦視窗，否則 None。"""
+        window = getattr(self, '_todo_window', None)
+        try:
+            return window if window is not None and window.winfo_exists() else None
+        except tk.TclError:
+            return None
+
+    def _on_open_todo_window(self, *args) -> None:
+        """開啟待辦事項視窗；已開啟時只帶到前景。"""
+        from ui.todo_window import TodoWindow
+
+        def open_window() -> None:
+            try:
+                existing = self._live_todo_window()
+                if existing is not None:
+                    existing.deiconify()
+                    existing.lift()
+                    existing.focus_force()
+                    return
+                geometry = self.config['ui_behavior'].get('todo_window_geometry', '760x560')
+                self._todo_window = TodoWindow(
+                    self.root, self.logic.todo_service, self._get_current_theme(),
+                    geometry=geometry, on_close=self._save_todo_window_geometry,
+                )
+            except Exception as e:
+                logger.error("Error opening todo window: %s", e)
+
+        self.root.after_idle(open_window)
+
+    def _save_todo_window_geometry(self, size: str) -> None:
+        """待辦視窗關閉時記住視窗大小。"""
+        self.config['ui_behavior']['todo_window_geometry'] = size
+        self._schedule_current_config_save()
+
+    def _on_todo_updated(self, pending: int | None = None, *args) -> None:
+        """待辦變更：更新資訊列的未完成數。"""
+        self._todo_pending = pending if isinstance(pending, int) else self.logic.todo_service.pending_count()
+        self._refresh_info_lines()
+
+    def _on_todo_due(self, items: list[dict[str, Any]], *args) -> None:
+        """整點提醒今日到期與逾期的待辦。"""
+        from ui.popup_utils import show_reminder_popup_window
+
+        show_reminder_popup_window(
+            self.root, self._format_todo_due_message(items), self._get_current_theme(),
+            title="待辦提醒", ok_text="確定",
+        )
+
+    @staticmethod
+    def _format_todo_due_message(items: list[dict[str, Any]], limit: int = 15) -> str:
+        """將到期待辦組成 Markdown 訊息（任務文字先去除會被誤判為語法的符號）。"""
+        plain = str.maketrans({'*': '＊', '_': '＿', '`': '｀', '[': '［', ']': '］'})
+
+        def line(item: dict[str, Any]) -> str:
+            text = str(item.get('text', '')).translate(plain)
+            if is_safe_url(item.get('link')):
+                text = f"[{text}]({item['link']})"
+            return f"- {text}（截止 {item.get('due_date', '')}）"
+
+        sections: list[str] = []
+        shown = 0
+        for status, title in (('overdue', '逾期'), ('today', '今日到期')):
+            group = [i for i in items if i.get('status') == status]
+            if not group:
+                continue
+            lines = [f"**{title}（{len(group)} 項）**"]
+            for item in group:
+                if shown >= limit:
+                    break
+                lines.append(line(item))
+                shown += 1
+            sections.append("\n".join(lines))
+        if len(items) > shown:
+            sections.append(f"…還有 {len(items) - shown} 項，請到待辦視窗查看")
+        return "\n\n".join(sections)
 
     def _on_open_vacation_schedule_window(
         self, schedule_to_edit: dict[str, Any] | None = None, *args
@@ -764,6 +847,7 @@ class DigitalClock(Observer):
             self.context_menu.countdown_menu.update_menu()
             self.context_menu.timezone_menu.update_menu()
             self.context_menu.pomodoro_menu.update_menu()
+            self.context_menu.refresh_todo_menu()
             self._context_menu_open = True
             self.context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
@@ -1019,6 +1103,10 @@ class DigitalClock(Observer):
             # 更新所有菜單的配色 (遞歸)。切換主題後強制失效快取
             self._menu_color_cache_key = None
             self._update_menu_colors(self.context_menu)
+
+            todo_window = self._live_todo_window()
+            if todo_window is not None:
+                todo_window.apply_theme(theme)
 
             if save:
                 self._schedule_current_config_save()
@@ -1450,6 +1538,10 @@ class DigitalClock(Observer):
             remaining = CountdownService.format_remaining(countdown.remaining_seconds())
             paused = " (暫停)" if countdown.is_paused else ""
             lines.append(f"{name}倒數 {remaining}{paused}")
+
+        pending = getattr(self, '_todo_pending', 0)
+        if pending > 0 and self.config.get('todo', {}).get('show_in_info_bar', True):
+            lines.append(f"待辦 {pending} 項")
 
         time_format = self.config['appearance'].get('time_format', '24h')
         for zone in self.logic.get_zone_times(now):

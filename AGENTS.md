@@ -50,6 +50,7 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 | Observer | `core/observer.py` | UI 實作 `update(event, *args, **kwargs)` |
 | Strategy | `strategies/base.py` | 新策略必須繼承 `BaseStrategy` 並實作 `check()` |
 | DI Container | `core/container.py` | name-based `register`/`get` |
+| Command | `core/todo_commands.py` | `TodoCommand.execute()` 回傳 False 表示無變更（不入歷史）；redo 會重新 `execute()`，需可重入 |
 
 ### Strategy 回傳型別規範
 
@@ -59,6 +60,7 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 | `HourlyWebReminderStrategy` | `list[dict]` | 此刻命中的規則（網頁或程式），空 list 表示不觸發；規則可帶 `weekdays` 覆蓋全域 `work_days_only` |
 | `PomodoroStrategy` | `str` | 下一個階段名稱 |
 | `VacationScheduleStrategy` | `dict` | 含 `active/expired/future/invalid` 分類 |
+| `TodoDueStrategy` | `list[dict]` | 整點起 1 分鐘內、在 `todo.start_hour`–`end_hour` 的逾期／今日到期未完成待辦摘要（含 `status: overdue\|today`），空 list 不觸發；簽名 `check(config, tasks, now)`，每小時去重 |
 
 ## 測試
 
@@ -68,6 +70,7 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 - Strategy 有狀態（如 `last_triggered_hour`），測試間需確保隔離
 - 設定檔路徑 `~/.digital_clock/config.json`，測試時 mock `Path.home()`
 - Strategy mock 回傳值須符合型別：`ReminderStrategy` → `([], "")` tuple；`HourlyWebReminderStrategy` → `[]`（規則 dict 清單）
+- `TodoService`/`TodoStore` 測試用 `tempfile` 目錄與假 `config_manager`（只需 `config_dir`、`load_config`、`save_config`），勿碰真實 `~/.digital_clock/todos.json`；UI 測試（`test_todo_window.py`）無顯示器時 `SkipTest`
 
 ## 關鍵模組補充
 
@@ -78,6 +81,9 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 | `services/pomodoro_service.py` | `__init__` 接收 `Callable[[], dict]` getter，每次 `start_focus/break` 才讀取最新設定 |
 | `ui/popup_utils.py` | 提供非阻塞提醒彈窗，**支援 Markdown 行內語法渲染**（粗體、斜體、code、連結、URL）。**禁止直接使用 `tkinter.messagebox`**——所有確認、錯誤、通知彈窗均須呼叫此模組函數，確保主題配色一致 |
 | `ui/menus/` | `context_menu.py`、`reminder_menu.py`、`vacation_menu.py`，右鍵選單子元件 |
+| `services/todo_service.py` | 待辦任務樹與復原/重做。**所有變更必須經 `core/todo_commands.py` 的 `TodoCommand`**（即 `add_task/update_task/delete_tasks/toggle_done/move_task/remove_link/import_file`），禁止直接改 `tasks` 樹；每次變更同步寫檔並發 `Events.TODO_UPDATED`（參數為未完成數）。`move_task` 僅接受語意位置（`POSITION_*`），座標轉換屬於 UI |
+| `services/todo_store.py` | `~/.digital_clock/todos.json` 原子寫入、損毀改名 `.bak`、匯入 todo_list `tasks.json`；待辦資料只存本機，不得寫入專案目錄或紀錄任務文字到日誌 |
+| `ui/todo_window.py` | 待辦視窗（單例，由 `DigitalClock._on_open_todo_window` 開啟）。配色只跟隨時鐘主題（`apply_theme(theme)`），**不提供深色切換**；樹狀 tag 每個選項（font/foreground/background）各自独立、同一項目同一選項最多一個 tag |
 
 ### 整點啟動（原「整點網頁」）Config 結構
 

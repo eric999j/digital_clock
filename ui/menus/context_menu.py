@@ -1,5 +1,5 @@
 import tkinter.font as tkfont
-from tkinter import Menu
+from tkinter import BooleanVar, Menu
 from typing import TYPE_CHECKING
 
 from ui.menus.countdown_menu import CountdownMenu
@@ -44,7 +44,17 @@ class ContextMenu(Menu):
         self.add_cascade(label="整點啟動", menu=self.hourly_web_menu)
         self.add_separator()
 
-        # 效率提升（整點啟動下方）：收納番茄鐘與倒數計時
+        # 待辦事項（整點啟動與效率提升之間）
+        self.todo_menu = Menu(self, tearoff=0)
+        self.todo_menu.add_command(label="開啟待辦事項…", command=self.logic.open_todo_window)
+        self.todo_remind_var = BooleanVar(master=self, value=self.logic.is_todo_remind_enabled())
+        self.todo_menu.add_checkbutton(
+            label="整點提醒到期待辦", variable=self.todo_remind_var, command=self.logic.toggle_todo_remind,
+        )
+        self.add_cascade(label="待辦事項", menu=self.todo_menu)
+        self.add_separator()
+
+        # 效率提升（待辦事項下方）：收納番茄鐘與倒數計時
         productivity_menu = Menu(self, tearoff=0)
 
         # 番茄鐘（內容隨狀態變化，開啟右鍵選單時由 DigitalClock 刷新）
@@ -63,6 +73,10 @@ class ContextMenu(Menu):
         self.add_separator()
 
         self.add_command(label="離開", command=self.logic.on_close)
+
+    def refresh_todo_menu(self) -> None:
+        """同步「整點提醒到期待辦」勾選狀態（開啟右鍵選單時呼叫）。"""
+        self.todo_remind_var.set(self.logic.is_todo_remind_enabled())
 
     def _add_clock_settings_menu(self) -> None:
         """新增時鐘設定選單。"""

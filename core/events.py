@@ -33,6 +33,10 @@ class Events:
     HOURLY_WEB_UPDATED = 'hourly_web_updated'
     HOURLY_WEB_PAUSE_TOGGLED = 'hourly_web_pause_toggled'
 
+    # 待辦事項事件
+    TODO_UPDATED = 'todo_updated'
+    TODO_DUE = 'todo_due'
+
     # 休假模式事件
     VACATION_TOGGLED = 'vacation_toggled'
 
@@ -52,6 +56,7 @@ class Events:
     OPEN_VACATION_SCHEDULE_WINDOW = 'open_vacation_schedule_window'
     OPEN_COUNTDOWN_WINDOW = 'open_countdown_window'
     OPEN_CALENDAR_SYNC_WINDOW = 'open_calendar_sync_window'
+    OPEN_TODO_WINDOW = 'open_todo_window'
 
     # 系統快捷鍵事件
     SCREENSHOT_TRIGGERED = 'screenshot_triggered'

@@ -44,6 +44,15 @@ class TestConfigManager(unittest.TestCase):
         self.assertFalse(config['system']['performance_monitor']['enabled'])
         self.assertEqual(config['version'], "1.0")
 
+    def test_todo_defaults(self):
+        config = ConfigManager().load_config()
+
+        self.assertEqual(config['todo'], {
+            'remind_enabled': True, 'start_hour': 9, 'end_hour': 17,
+            'work_days_only': True, 'show_in_info_bar': True,
+        })
+        self.assertEqual(config['ui_behavior']['todo_window_geometry'], "760x560")
+
     def test_load_save_config(self):
         conf_mgr = ConfigManager()
         config = conf_mgr.load_config()

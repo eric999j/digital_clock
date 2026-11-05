@@ -130,6 +130,7 @@ def apply_themed_ttk_style(prefix: str, theme: dict[str, str] | None) -> None:
     style.configure(f'{prefix}.TLabelframe.Label', background=bg, foreground=fg)
     style.configure(f'{prefix}.TLabel', background=bg, foreground=fg)
     style.configure(f'{prefix}.TCheckbutton', background=bg, foreground=fg)
+    style.configure(f'{prefix}.TRadiobutton', background=bg, foreground=fg)
     style.configure(f'{prefix}.TCombobox', fieldbackground='white', foreground='black')
     style.configure(f'{prefix}.TEntry', fieldbackground='white', foreground='black')
 

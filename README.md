@@ -1,7 +1,7 @@
 # 桌面數位時鐘 (Digital Clock)
 
 ## 緣起
-當應用程式最大化時，自動隱藏的工具列雖然釋放了螢幕空間，卻也讓我們無法隨時看到時間。此專案旨在解決這個問題，提供一個簡潔、不干擾且永遠在最上層的桌面時鐘，並整合番茄鐘、倒數計時、提醒、整點啟動等小工具。
+當應用程式最大化時，自動隱藏的工具列雖然釋放了螢幕空間，卻也讓我們無法隨時看到時間。此專案旨在解決這個問題，提供一個簡潔、不干擾且永遠在最上層的桌面時鐘，並整合番茄鐘、倒數計時、提醒、整點啟動、待辦事項等小工具。
 
 - 環境：Python 3.13+（tkinter）
 - 依賴（皆列於 `requirements.txt`）：`pynput`（全域鍵盤監聽）；`tkinterdnd2`（選用，整點啟動視窗拖入 XML 匯入，未安裝時改用按鈕匯入）；`icalendar` + `recurring-ical-events`（Outlook 行事曆 ICS 同步，缺少時停用該功能）；Windows 另需 `tzdata`（多時區）
@@ -20,12 +20,13 @@
 - **不顯示在工作列**（Windows）；更改副檔名為 `.pyw` 可無主控台視窗背景執行。
 
 ### 時鐘下方資訊列
-番茄鐘、倒數計時、多時區的資訊集中顯示在時鐘下方，由上而下依序為：
+番茄鐘、倒數計時、待辦事項、多時區的資訊集中顯示在時鐘下方，由上而下依序為：
 
 | 項目 | 範例 | 說明 |
 |------|------|------|
 | 番茄鐘 | `專注 24:16`、`短休息 04:30 (暫停)` | 專注/短休息/長休息階段與剩餘時間，暫停時加註 |
 | 倒數計時 | `泡麵 倒數 02:54 (暫停)` | 名稱（可空白）與剩餘時間 |
+| 待辦事項 | `待辦 3 項` | 未完成的待辦數（為 0 或設定 `todo.show_in_info_bar` 為 `false` 時不顯示） |
 | 多時區 | `東京 00:05 (+1)` | 最多 3 個，跨日以 `(+1)`、`(-1)` 標示 |
 
 沒有任何項目時視窗維持原本大小；文字過寬時自動縮小字級。
@@ -48,12 +49,37 @@
 - 同一小時同一目標只觸發一次；程式一律不經 shell、不等待結束；網頁僅允許 http/https。
 - 設定視窗可「立即測試」、編輯規則，並可**匯入 Windows 工作排程器 XML**（按鈕選檔，或直接拖入規則清單）：每日/每週觸發轉為含星期條件的整點規則，登入/開機觸發轉為「程式啟動時」規則，不支援的設定列為警告。
 - **雙擊規則**：網頁直接開啟；程式須先通過「設定驗證」（程式存在、類型支援、起始目錄、時段與星期正確）與「簡易安全檢查」，再經確認視窗才執行。未通過的規則在清單中以紅色標示；安全檢查未通過時須在確認視窗明確授權才會手動執行一次。
-- **簡易安全檢查**（非防毒）：拒絕關機、格式化、磁磟分割、遞迴刪除、修改開機設定等明顯破壞系統的程式與參數，並掃描批次檔與參數中指向的腳本（.bat/.cmd/.ps1/.py/.sh 等，前 256 KB）。新增規則、雙擊、「測試」與自動觸發都套用同一套檢查。
+- **簡易安全檢查**（非防毒）：拒絕關機、格式化、磁碟分割、遞迴刪除、修改開機設定等明顯破壞系統的程式與參數，並掃描批次檔與參數中指向的腳本（.bat/.cmd/.ps1/.py/.sh 等，前 256 KB）。新增規則、雙擊、「測試」與自動觸發都套用同一套檢查。
 - 設定視窗左下角的「**略過安全檢查**」勾選後，忽略上述安全檢查（設定驗證仍有效）：可新增與自動執行 shutdown 等指令，清單不再以紅色標示。
 - 可獨立暫停/啟動。
 
+### 待辦事項
+入口在右鍵「待辦事項 › 開啟待辦事項…」（位於「整點啟動」與「效率提升」之間）。視窗配色完全跟隨時鐘主題（切換配色方案時即時更新，無需另外切換深色模式），清單表頭（項目、完成、專案…）統一為灰底黑字；可縮放且會記住大小，重複開啟只會帶回同一個視窗。
+
+- **任務**：上方輸入列按 Enter 快速新增，或用「詳細新增…」設定專案、優先級（低/普通/高）、開始日、截止日（今天/明天/下週 或 `YYYY-MM-DD`）與連結（僅允許 http/https）；編輯（F2、Enter、雙擊、右鍵）與刪除（需確認，含子項）。
+- **父子階層**：父項完成時子孫一併完成；取消某子項的完成時，其祖先與子孫一併取消；新增子項自動繼承父項的專案。點清單「完成」欄的方塊（或按 Space）切換完成狀態。
+- **拖曳調整**：拖到目標列上緣／下緣為移到其前／後，中段為成為其子項，往左拖提升一層，拖到空白處移到最上層末端；不允許移入自己的子孫。
+- **顯示**：已完成為灰色刪除線、父項粗體、有連結的顯示為藍色底線、高／低優先為紅／綠色文字；截止日逢逾期、今天、三天內分別以不同底色標示（已完成不標示）。**直接單擊項目欄上的連結文字即可開啟連結**（滑鼠移上去變手型；Ctrl/Shift 多選、拖曳或點其他欄不會開啟；連結文字上的雙擊不開編輯，編輯請用 F2、Enter 或其他欄），右鍵選單亦可開啟、移除連結。
+- **篩選與搜尋**：全部／未完成／高優先／已完成／逾期／今日到期／本週到期／未排截止日；關鍵字不分大小寫比對內容與專案，結果保留命中項目的祖先階層。
+- **復原／重做**：Ctrl+Z／Ctrl+Y，最多 50 步（新增、編輯、刪除、完成、移動、移除連結、匯入），程式執行期間保留。
+- **匯入／匯出**：「匯入…」可讀取 todo_list 的 `tasks.json`（或本程式的 `todos.json`），附加到最上層，與既有任務 id 衝突時自動重新產生，可復原；「匯出…」輸出 Markdown checkbox 清單（子項繼承父項的完成狀態、有連結者輸出為連結語法）。
+- **統計**：狀態列顯示「共 X｜待辦 Y｜完成 Z」，以葉節點計算（已完成的父項視為一項）。
+- **快捷鍵**：Ctrl+N（聚焦新增列）、Ctrl+F（搜尋）、F2／Enter（編輯）、Space（完成）、Del（刪除）、Esc（清除搜尋）、Ctrl+Z／Ctrl+Y。
+- **整點提醒到期待辦**：整點起 1 分鐘內、落在 `start_hour`–`end_hour`（預設 9–17、僅上班日）時，彈窗列出「逾期」與「今日到期」的未完成待辦（開始日須已到），同一小時只提醒一次；右鍵選單「待辦事項 › 整點提醒到期待辦」可開關。與整點啟動共用暫停狀態：整點啟動暫停或勿擾模式中不提醒。
+- **資料與設定**：任務僅儲存在本機 `~/.digital_clock/todos.json`（與 `config.json` 同目錄、彼此分離，不在專案目錄內，`.gitignore` 亦排除 `todos.json*`、`tasks.json`，避免誤提交），非 Windows 平台檔案權限為 `600`；每次變更立即以原子替換寫入，檔案損毀時改名為 `todos.json.bak` 並建立新清單。待辦沒有獨立的設定檔，開關與時段都在 `config.json` 的 `todo` 區塊：
+
+```json
+"todo": {
+  "remind_enabled": true,
+  "start_hour": 9,
+  "end_hour": 17,
+  "work_days_only": true,
+  "show_in_info_bar": true
+}
+```
+
 ### 勿擾模式
-- 一鍵「立即開始勿擾 / 結束勿擾」：進入勿擾時停止番茄鐘並暫停提醒與整點啟動（含「程式啟動時」規則），結束後恢復切換前的暫停狀態。
+- 一鍵「立即開始勿擾 / 結束勿擾」：進入勿擾時停止番茄鐘並暫停提醒與整點啟動（含「程式啟動時」規則與待辦到期提醒），結束後恢復切換前的暫停狀態。
 - **勿擾排程**：設定日期範圍與備註（勾選「單日勿擾」只需設定開始日期，免填結束日期），到期自動進入/離開勿擾；已過期或無效的排程自動清除。
 - **行事曆同步（Outlook ICS）**：於「勿擾模式 › 行事曆同步設定…」貼上 Outlook 網頁版發佈行事曆的 ICS 連結（僅接受 https，`webcal://` 會自動轉換），啟用後會在行事曆事件進行中自動進入勿擾，事件結束自動離開。
   - 背景執行緒依「同步間隔」（預設 15 分鐘）抓取事件（涵蓋前 1 天至後 7 天，含週期事件、略過已取消的事件），重疊或相接的事件合併為一段；抓取失敗時沿用上次的快取。
@@ -67,7 +93,7 @@
 
 ### 穩定性與健壯性
 - **右鍵選單穩定**：選單開啟期間不會修改選單內容或視窗大小；資訊列每秒更新也不會重設正在使用的字型（Windows 上會讓選單被關閉）。
-- **設定檔**：位於 `~/.digital_clock/config.json`；預設值遞迴合併、損毀時回退預設值、變更延遲寫入（防抖）、關閉時沖刷、以原子替換避免寫入中斷造成損毀。
+- **設定檔**：位於 `~/.digital_clock/config.json`；預設值遞迴合併、損毀時回退預設值、變更延遲寫入（防抖）、關閉時沖刷、以原子替換避免寫入中斷造成損毀。待辦資料另存 `~/.digital_clock/todos.json`，同樣原子寫入且損毀時自動備份。
 - **日誌**：`~/.digital_clock/digital_clock.log`，單檔 5 MB、保留 3 份輪替。
 - **效能監控**：可在設定檔 `system.performance_monitor` 啟用，定期輸出渲染與邏輯迴圈統計。
 
@@ -79,6 +105,7 @@
 勿擾模式 ›  立即開始勿擾 / 新增勿擾排程… / 行事曆同步設定… / 既有排程
 提醒 ›      新增提醒… / 暫停 / 既有提醒（編輯、刪除）
 整點啟動 ›  設定 / 暫停
+待辦事項 ›  開啟待辦事項… / ☑ 整點提醒到期待辦
 效率提升 ›
     番茄鐘 ›    開始專注 / 暫停（繼續）/ 取消番茄鐘
     倒數計時 ›  暫停（繼續）/ 取消倒數 / 1·3·5·10·15·30 分鐘 / 自訂…
@@ -148,7 +175,7 @@ flowchart TB
         direction LR
         WINDOW["main_window.py<br/>DigitalClock (Observer)"]
         MENUS["menus/<br/>右鍵選單"]
-        DIALOGS["設定視窗與彈窗<br/>reminder / hourly_web / vacation / calendar_sync / countdown / popup_utils"]
+        DIALOGS["設定視窗與彈窗<br/>reminder / hourly_web / vacation / calendar_sync / countdown / todo / popup_utils"]
     end
 
     subgraph Core_Layer["核心層 (core/)"]
@@ -156,17 +183,18 @@ flowchart TB
         LOGIC["clock_logic.py<br/>ClockLogic (Mediator)"]
         EVT["events.py<br/>事件常數"]
         OBS["observer.py<br/>Observer 介面"]
+        TODOCORE["todo_task / todo_filter / todo_commands<br/>待辦模型、篩選、Command"]
     end
 
     subgraph Service_Layer["服務層 (services/)"]
         direction LR
         POMO["pomodoro / countdown"]
-        REMS["reminder / hourly_web / vacation_schedule / calendar_sync"]
+        REMS["reminder / hourly_web / todo / vacation_schedule / calendar_sync"]
         MISC["pause_manager / timezone / keyboard"]
         CFG["config_service<br/>ConfigManager (Singleton)"]
     end
 
-    STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 番茄鐘 / 勿擾排程 / 行事曆"]
+    STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 待辦到期 / 番茄鐘 / 勿擾排程 / 行事曆"]
 
     MAIN --> WINDOW
     WINDOW --> MENUS
@@ -177,6 +205,7 @@ flowchart TB
     LOGIC --> REMS
     LOGIC --> MISC
     REMS --> STR
+    REMS --> TODOCORE
     REMS --> CFG
 ```
 
@@ -194,6 +223,9 @@ digital_clock/
 │   ├── program_launcher.py      # 程式啟動（不經 shell、不等待）
 │   ├── program_safety.py        # 程式規則的設定驗證與簡易安全檢查
 │   ├── task_xml_importer.py     # 工作排程器 XML 匯入
+│   ├── todo_task.py            # 待辦資料模型與日期輸入解析
+│   ├── todo_filter.py          # 待辦篩選、搜尋與統計
+│   ├── todo_commands.py        # 待辦 Command（可復原操作）與 CommandHistory
 │   └── url_validator.py         # URL 安全驗證（僅 http/https）
 ├── services/
 │   ├── config_service.py        # ConfigManager（Singleton）
@@ -201,6 +233,8 @@ digital_clock/
 │   ├── countdown_service.py     # 倒數計時引擎
 │   ├── reminder_service.py      # 單次/週期提醒、稍後提醒
 │   ├── hourly_web_service.py    # 整點啟動（網頁/程式）
+│   ├── todo_service.py          # 待辦事項：任務樹、復原/重做、整點到期提醒
+│   ├── todo_store.py            # todos.json 原子寫入、損毀備份、匯入匯出
 │   ├── vacation_schedule_service.py  # 勿擾排程
 │   ├── calendar_sync_service.py # Outlook ICS 同步，事件進行中自動勿擾
 │   ├── pause_manager.py         # 提醒/整點啟動/勿擾暫停狀態
@@ -214,7 +248,8 @@ digital_clock/
 │   ├── dpi.py                   # 高 DPI 支援
 │   ├── window_bounds.py         # 視窗位置限制
 │   ├── file_drop.py             # 選用的拖放支援（tkinterdnd2）
-│   ├── *_window.py              # 提醒/整點啟動/勿擾排程/行事曆同步/倒數 設定視窗
+│   ├── *_window.py              # 提醒/整點啟動/勿擾排程/行事曆同步/倒數/待辦 視窗
+│   ├── todo_edit_dialog.py      # 待辦新增/編輯對話框
 │   └── menus/                   # 右鍵選單元件
 ├── tests/                       # unittest
 ├── package_*.{bat,sh}           # 各平台打包腳本
@@ -227,7 +262,8 @@ digital_clock/
 |------|------|------|
 | Observer | `core/observer.py` | `DigitalClock` 實作 `Observer`，訂閱 `ClockLogic` 以 `Events` 常數發出的事件 |
 | Mediator | `core/clock_logic.py` | `ClockLogic` 協調各服務，服務透過 `notify_callback` 回報 |
-| Strategy | `strategies/` | 提醒、整點啟動、番茄鐘階段、勿擾排程、行事曆事件的判斷邏輯可替換，須繼承 `BaseStrategy` |
+| Strategy | `strategies/` | 提醒、整點啟動、待辦到期、番茄鐘階段、勿擾排程、行事曆事件的判斷邏輯可替換，須繼承 `BaseStrategy` |
+| Command | `core/todo_commands.py` | 待辦的每個操作都是可執行、可復原的 `TodoCommand`，由 `CommandHistory`（上限 50 步）記錄，`TodoService` 負責執行與存檔 |
 | Singleton | `services/config_service.py` | `ConfigManager` 確保設定管理器唯一 |
 | DI Container | `core/container.py` | 以名稱註冊/取得服務 |
 

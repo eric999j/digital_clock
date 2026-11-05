@@ -86,7 +86,8 @@ class ConfigManager:
                     "relax_after_ms": 1500
                 },
                 "reminder_window_geometry": "400x530",
-                "hourly_web_window_geometry": "560x520"
+                "hourly_web_window_geometry": "560x520",
+                "todo_window_geometry": "760x560"
             },
             "system": {
                 "save_delay_ms": 1000,
@@ -129,6 +130,13 @@ class ConfigManager:
                 "work_days_only": True,  # 是否僅在上班日（週一至週五）觸發
                 "skip_safety_check": False,  # True 時忽略程式規則的安全檢查（可執行 shutdown 等）
                 "url_rules": []  # [{url | type=program+command/arguments/working_dir, start_hour, end_hour, weekdays?, enabled?, trigger?=startup}]
+            },
+            "todo": {
+                "remind_enabled": True,  # 整點提醒今日到期／逾期的待辦
+                "start_hour": 9,
+                "end_hour": 17,
+                "work_days_only": True,
+                "show_in_info_bar": True  # 時鐘下方資訊列顯示未完成待辦數
             },
             "pomodoro": {
                 "focus_minutes": 25,

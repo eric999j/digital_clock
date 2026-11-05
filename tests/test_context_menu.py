@@ -68,7 +68,7 @@ class TestContextMenuIntegration(unittest.TestCase):
 
     def test_dynamic_submenus_are_exposed_as_attributes(self):
         menu = self.clock.context_menu
-        for name in ("pomodoro_menu", "hourly_web_menu", "countdown_menu", "timezone_menu"):
+        for name in ("pomodoro_menu", "hourly_web_menu", "todo_menu", "countdown_menu", "timezone_menu"):
             with self.subTest(attribute=name):
                 self.assertTrue(hasattr(menu, name))
 
@@ -83,7 +83,7 @@ class TestContextMenuIntegration(unittest.TestCase):
     def test_productivity_menu_sits_below_hourly_web_and_holds_pomodoro_and_countdown(self):
         menu = self.clock.context_menu
         labels = self._labels(menu)
-        self.assertEqual(labels[labels.index("整點啟動") + 1:labels.index("整點啟動") + 3], ["---", "效率提升"])
+        self.assertEqual(labels[labels.index("待辦事項") + 1:labels.index("待辦事項") + 3], ["---", "效率提升"])
 
         productivity = menu.nametowidget(menu.entrycget(labels.index("效率提升"), "menu"))
         self.assertEqual(self._labels(productivity), ["番茄鐘", "倒數計時"])
@@ -127,6 +127,61 @@ class TestContextMenuIntegration(unittest.TestCase):
         finally:
             clock.logic.pomodoro.stop()
 
+    def test_todo_menu_sits_between_hourly_and_productivity(self):
+        labels = self._labels(self.clock.context_menu)
+        start = labels.index("整點啟動")
+        self.assertEqual(labels[start:start + 5], ["整點啟動", "---", "待辦事項", "---", "效率提升"])
+        self.assertEqual(self._labels(self.clock.context_menu.hourly_web_menu), ["設定", "暫停"])
+        self.assertEqual(self._labels(self.clock.context_menu.todo_menu), ["開啟待辦事項…", "整點提醒到期待辦"])
+
+    def test_todo_remind_checkbutton_toggles_setting(self):
+        clock = self.clock
+        menu = clock.context_menu.todo_menu
+        before = clock.logic.is_todo_remind_enabled()
+        try:
+            menu.invoke(1)
+            self.assertEqual(clock.logic.is_todo_remind_enabled(), not before)
+            clock.context_menu.refresh_todo_menu()
+            self.assertEqual(clock.context_menu.todo_remind_var.get(), not before)
+        finally:
+            if clock.logic.is_todo_remind_enabled() != before:
+                clock.logic.toggle_todo_remind()
+
+    def test_info_line_shows_pending_todo_count(self):
+        clock = self.clock
+        task = clock.logic.todo_service.add_task("資訊列待辦")
+        try:
+            self.assertIn("待辦 1 項", clock._compose_info_lines())
+            clock.config['todo']['show_in_info_bar'] = False
+            self.assertFalse(any(line.startswith("待辦") for line in clock._compose_info_lines()))
+        finally:
+            clock.config['todo']['show_in_info_bar'] = True
+            clock.logic.todo_service.delete_tasks([task.id])
+        self.assertFalse(any(line.startswith("待辦") for line in clock._compose_info_lines()))
+
+    def test_todo_window_is_single_instance_and_follows_clock_theme(self):
+        clock = self.clock
+        themes = clock.config['themes']
+        original = clock.config['appearance']['theme']
+        other = next(key for key in themes if key != original)
+        clock._on_open_todo_window()
+        clock.root.update()
+        window = clock._live_todo_window()
+        try:
+            self.assertIsNotNone(window)
+            clock._on_open_todo_window()
+            clock.root.update()
+            self.assertIs(clock._live_todo_window(), window)
+
+            clock.apply_theme(other, save=False)
+            self.assertEqual(str(window.cget('bg')), themes[other]['bg'])
+        finally:
+            clock.apply_theme(original, save=False)
+            if window is not None:
+                window.close()
+        self.assertIsNone(clock._live_todo_window())
+        self.assertRegex(clock.config['ui_behavior']['todo_window_geometry'], r"^\d+x\d+$")
+
     def test_countdown_menu_has_no_remaining_entry(self):
         clock = self.clock
         clock.logic.start_countdown(300)
@@ -143,7 +198,7 @@ class TestContextMenuIntegration(unittest.TestCase):
         labels = self._labels(self.clock.context_menu)
         entries = [label for label in labels if label != "---"]
 
-        self.assertEqual(entries, ["勿擾模式", "提醒", "整點啟動", "效率提升", "時鐘設定", "離開"])
+        self.assertEqual(entries, ["勿擾模式", "提醒", "整點啟動", "待辦事項", "效率提升", "時鐘設定", "離開"])
         # 不應出現連續或頭尾的分隔線
         self.assertNotEqual(labels[0], "---")
         self.assertNotEqual(labels[-1], "---")

@@ -16,6 +16,7 @@ from services.pause_manager import PauseManager
 from services.pomodoro_service import PomodoroService
 from services.reminder_service import ReminderService
 from services.timezone_service import TimezoneService, ZoneTime
+from services.todo_service import TodoService
 from services.vacation_schedule_service import VacationScheduleService
 
 if TYPE_CHECKING:
@@ -44,6 +45,7 @@ class ClockLogic:
         # 初始化服務
         self.reminder_service = ReminderService(config_manager, self.notify_observers)
         self.hourly_service = HourlyWebService(config_manager, self.notify_observers)
+        self.todo_service = TodoService(config_manager, self.notify_observers)
         self.pause_manager = PauseManager(config_manager, self.notify_observers)
         self.countdown_service = CountdownService(self.notify_observers)
         self.timezone_service = TimezoneService(config_manager, self.notify_observers)
@@ -308,6 +310,7 @@ class ClockLogic:
 
         # 整點網頁提醒
         self.hourly_service.check(now=check_time, config=config_snapshot)
+        self.todo_service.check(now=check_time, config=config_snapshot)
 
         # 一般提醒
         is_paused = self.pause_manager.get_pause_state('reminder', config=config_snapshot)
@@ -383,6 +386,17 @@ class ClockLogic:
     def open_hourly_web_window(self) -> None:
         """請求 UI 開啟整點網頁提醒設定視窗（透過事件解耦）。"""
         self.notify_observers(Events.OPEN_HOURLY_WEB_WINDOW)
+
+    def open_todo_window(self) -> None:
+        """請求 UI 開啟待辦事項視窗（透過事件解耦）。"""
+        self.notify_observers(Events.OPEN_TODO_WINDOW)
+
+    def toggle_todo_remind(self) -> None:
+        """切換「整點提醒到期待辦」。"""
+        self.todo_service.set_remind_enabled(not self.todo_service.is_remind_enabled())
+
+    def is_todo_remind_enabled(self) -> bool:
+        return self.todo_service.is_remind_enabled()
 
     def on_close(self) -> None:
         """應用程式關閉時的清理工作。"""

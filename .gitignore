@@ -18,6 +18,11 @@ env/
 # Local user config (runtime-generated)
 config.json
 
+# Local todo data (lives in ~/.digital_clock; ignore copies such as todo_list exports)
+todos.json*
+tasks.json
+tasks.json.bak
+
 # Coverage / test artifacts
 .coverage
 .coverage.*
