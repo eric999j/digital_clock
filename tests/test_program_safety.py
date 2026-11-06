@@ -4,114 +4,51 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.program_safety import check_program_rule, scan_text
+from core.program_safety import check_program_rule
 
 
-def _rule(command: str, arguments: str = '', **extra) -> dict:
+def _rule(command: str, arguments: str = '', **extra: object) -> dict:
     return {'type': 'program', 'command': command, 'arguments': arguments,
             'start_hour': 9, 'end_hour': 9, **extra}
 
 
 class TestProgramConfigChecks(unittest.TestCase):
-    def test_valid_existing_program_passes(self):
+    def test_valid_existing_program_passes(self) -> None:
         check = check_program_rule(_rule(sys.executable, '-V'))
-        self.assertEqual((check.errors, check.blocked), ((), ()))
+        self.assertEqual(check.errors, ())
         self.assertTrue(check.ok)
 
-    def test_missing_program_is_config_error_not_safety_block(self):
+    def test_missing_program_is_error(self) -> None:
         check = check_program_rule(_rule('definitely_missing_tool_xyz'))
         self.assertTrue(check.errors)
-        self.assertEqual(check.blocked, ())
         self.assertFalse(check.ok)
 
-    def test_blank_command_is_error(self):
-        self.assertTrue(check_program_rule(_rule('  ')).errors)
-
-    def test_missing_working_dir_is_error(self):
-        check = check_program_rule(_rule(sys.executable, working_dir=os.path.join(tempfile.gettempdir(), 'no_dir_xyz')))
-        self.assertTrue(any('起始目錄' in e for e in check.errors))
-
-    def test_control_characters_are_rejected(self):
-        self.assertTrue(any('控制字元' in e for e in check_program_rule(_rule(sys.executable, 'a\nb')).errors))
-
-    def test_overlong_arguments_are_rejected(self):
-        self.assertTrue(any('過長' in e for e in check_program_rule(_rule(sys.executable, 'a' * 5000)).errors))
-
-    def test_invalid_hours_and_weekdays_are_errors(self):
-        bad_hours = {**_rule(sys.executable), 'start_hour': 10, 'end_hour': 9}
-        bad_days = _rule(sys.executable, weekdays=[0, 7])
-        self.assertTrue(any('時段' in e for e in check_program_rule(bad_hours).errors))
-        self.assertTrue(any('星期' in e for e in check_program_rule(bad_days).errors))
+    def test_invalid_paths_arguments_and_schedule_are_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cases = [
+                _rule('  '),
+                _rule(sys.executable, working_dir=os.path.join(tmp, 'missing')),
+                _rule(sys.executable, 'a\nb'),
+                _rule(sys.executable, 'a' * 5000),
+                _rule(sys.executable, start_hour=10, end_hour=9),
+                _rule(sys.executable, weekdays=[0, 7]),
+            ]
+            for rule in cases:
+                with self.subTest(rule=rule):
+                    self.assertTrue(check_program_rule(rule).errors)
 
     @unittest.skipUnless(sys.platform == 'win32', '副檔名限制僅適用 Windows')
-    def test_unsupported_extension_is_error_on_windows(self):
+    def test_unsupported_extension_is_error_on_windows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'note.txt'
             path.write_text('x', encoding='utf-8')
-            self.assertTrue(any('不支援' in e for e in check_program_rule(_rule(str(path))).errors))
+            self.assertTrue(check_program_rule(_rule(str(path))).errors)
 
-
-class TestProgramSafetyChecks(unittest.TestCase):
-    def test_destructive_programs_are_blocked_regardless_of_arguments(self):
-        for command in ('shutdown.exe', 'format.com', 'diskpart', r'C:\Windows\System32\bcdedit.exe'):
-            with self.subTest(command=command):
-                self.assertTrue(check_program_rule(_rule(command)).blocked)
-
-    def test_dangerous_arguments_are_blocked(self):
-        for arguments in ('/c rd /s /q C:\\', 'format c: /q', 'reg delete HKLM\\Software /f',
-                          'vssadmin delete shadows /all', 'rm -rf /', 'dd if=/dev/zero of=/dev/sda'):
-            with self.subTest(arguments=arguments):
-                self.assertTrue(check_program_rule(_rule(sys.executable, arguments)).blocked)
-
-    def test_interpreters_get_a_warning(self):
-        check = check_program_rule(_rule('cmd', '/c echo hi'))
-        self.assertTrue(any('命令直譯器' in w for w in check.warnings))
+    def test_command_content_is_not_claimed_safe_or_unsafe(self) -> None:
+        """安全決策在 UI 的完整命令確認，不由可繞過的內容掃描做出。"""
+        check = check_program_rule(_rule(sys.executable, 'anything'))
         self.assertEqual(check.blocked, ())
-
-    def test_batch_file_content_is_scanned(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            bad = Path(tmp) / 'bad.bat'
-            bad.write_text('@echo off\nrd /s /q D:\\data\n', encoding='utf-8')
-            good = Path(tmp) / 'good.bat'
-            good.write_text('@echo off\necho hello\n', encoding='utf-8')
-            self.assertTrue(check_program_rule(_rule(str(bad))).blocked)
-            self.assertEqual(check_program_rule(_rule(str(good))).blocked, ())
-
-    def test_utf16_batch_file_is_scanned(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'bad16.bat'
-            path.write_bytes('shutdown /s /t 0\r\n'.encode('utf-16'))
-            self.assertTrue(check_program_rule(_rule(str(path))).blocked)
-
-    def test_script_passed_as_argument_is_scanned(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            bad = Path(tmp) / 'job.py'
-            bad.write_text("import shutil\nshutil.rmtree('/')\n", encoding='utf-8')
-            good = Path(tmp) / 'ok.py'
-            good.write_text("print('graceful shutdown complete')\n", encoding='utf-8')
-            self.assertTrue(check_program_rule(_rule(sys.executable, 'job.py', working_dir=tmp)).blocked)
-            self.assertTrue(check_program_rule(_rule(sys.executable, f'"{bad}"')).blocked)
-            self.assertEqual(check_program_rule(_rule(sys.executable, str(good))).blocked, ())
-
-    def test_oversized_script_only_warns(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'big.py'
-            path.write_text('#' * (300 * 1024), encoding='utf-8')
-            check = check_program_rule(_rule(sys.executable, str(path)))
-            self.assertEqual(check.blocked, ())
-            self.assertTrue(any('過大' in w for w in check.warnings))
-
-    def test_scan_text_ignores_harmless_mentions(self):
-        self.assertEqual(scan_text('graceful shutdown and format string'), [])
-        self.assertIn('fork bomb', scan_text('%0|%0'))
-
-    def test_skip_safety_turns_blocked_into_warnings_but_keeps_config_errors(self):
-        rule = _rule('shutdown', '/r /f /t 0')
-        self.assertTrue(check_program_rule(rule).blocked)
-        check = check_program_rule(rule, skip_safety=True)
-        self.assertEqual(check.blocked, ())
-        self.assertTrue(any('已略過安全檢查' in w for w in check.warnings))
-        self.assertTrue(check_program_rule(_rule('definitely_missing_tool_xyz'), skip_safety=True).errors)
+        self.assertEqual(check.warnings, ())
 
 
 if __name__ == '__main__':

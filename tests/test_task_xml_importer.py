@@ -39,6 +39,7 @@ class TestParseTaskXml(unittest.TestCase):
 
         self.assertEqual(result.rules, [{
             'type': 'program',
+            'enabled': False,
             'command': 'C:\\Python313\\python.exe',
             'arguments': 'C:\\Users\\x\\Daily\\company_news.py',
             'working_dir': 'C:\\Users\\x\\Daily',

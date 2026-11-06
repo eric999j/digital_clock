@@ -135,5 +135,5 @@ python -m unittest discover -s tests
 - **忘記在 Events 定義常數** → 出現 magic string，違反慣例
 - **Service 直接操作 UI** → 破壞 Observer 解耦，應透過 `notify_callback`
 - **跳過 Strategy 層** → 硬編碼邏輯在 Service，日後難以替換
-- **測試未隔離 Singleton** → `ConfigManager` 需重設 `_instance = None`
+- **測試使用真實設定目錄** → 測試 `ConfigManager` 時 mock `Path.home()` 並使用暫存目錄
 - **Windows 專用 API 無 platform check** → `ctypes.windll` 在非 Windows 會失敗

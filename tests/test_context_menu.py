@@ -5,7 +5,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.container import ServiceContainer
 from services.config_service import ConfigManager
 
 
@@ -23,13 +22,10 @@ class TestContextMenuIntegration(unittest.TestCase):
         # 初始化失敗時 DigitalClock 會跳 messagebox，無頭環境會永遠阻塞
         cls._showerror = patch("ui.main_window.messagebox.showerror")
         cls._showerror.start()
-        ConfigManager._instance = None
         try:
             from ui.main_window import DigitalClock
 
-            container = ServiceContainer()
-            container.register("config_manager", ConfigManager())
-            cls.clock = DigitalClock(container)
+            cls.clock = DigitalClock(ConfigManager())
         except tk.TclError as e:
             cls._showerror.stop()
             cls._keyboard.stop()
@@ -43,7 +39,6 @@ class TestContextMenuIntegration(unittest.TestCase):
         try:
             cls.clock.logic.on_close()
         finally:
-            ConfigManager._instance = None
             cls._showerror.stop()
             cls._keyboard.stop()
             cls._home.stop()

@@ -9,7 +9,6 @@ from services.config_service import ConfigManager
 
 class TestConfigSnapshot(unittest.TestCase):
     def setUp(self):
-        ConfigManager._instance = None
         self.tmpdir = tempfile.mkdtemp()
         self.home_patch = patch('services.config_service.Path.home', return_value=Path(self.tmpdir))
         self.home_patch.start()
@@ -17,7 +16,6 @@ class TestConfigSnapshot(unittest.TestCase):
 
     def tearDown(self):
         self.home_patch.stop()
-        ConfigManager._instance = None
 
     def test_read_only_returns_cache_reference(self):
         """read_only=True 應回傳相同物件參考（無 deepcopy）。"""

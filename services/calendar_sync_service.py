@@ -251,9 +251,8 @@ class CalendarSyncService:
         config = self.config_manager.load_config(read_only=True)
         settings = self.get_settings()
         on_vacation = self.pause_manager.get_pause_state('vacation', config=config)
-        owns_vacation = (
-            on_vacation
-            and self.pause_manager.get_vacation_source(config=config) == _VACATION_SOURCE
+        owns_vacation = self.pause_manager.has_vacation_source(
+            _VACATION_SOURCE, config=config
         )
 
         if not settings['enabled']:
@@ -272,9 +271,9 @@ class CalendarSyncService:
 
         if current is not None:
             key = current['start'].isoformat()
-            if not on_vacation and key != self._entered_key:
+            if not owns_vacation and key != self._entered_key:
                 self._entered_key = key
-                self.pause_manager.toggle_vacation(source=_VACATION_SOURCE)
+                self.pause_manager.set_vacation_source(_VACATION_SOURCE, True)
                 self.notify(Events.CALENDAR_EVENT_STARTED, current['summary'])
             return
 
@@ -292,5 +291,5 @@ class CalendarSyncService:
                 self.notify(Events.CALENDAR_EVENT_UPCOMING, upcoming['summary'], minutes)
 
     def _exit_vacation(self) -> None:
-        self.pause_manager.toggle_vacation(source=_VACATION_SOURCE)
+        self.pause_manager.set_vacation_source(_VACATION_SOURCE, False)
         self.notify(Events.CALENDAR_EVENT_ENDED)

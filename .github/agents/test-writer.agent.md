@@ -46,7 +46,6 @@ class Test<ServiceClass>(unittest.TestCase):
 
 ```python
 def setUp(self):
-    ConfigManager._instance = None
     self.test_dir = tempfile.mkdtemp()
     self.patcher = patch('pathlib.Path.home', return_value=Path(self.test_dir))
     self.mock_home = self.patcher.start()
@@ -54,7 +53,6 @@ def setUp(self):
 def tearDown(self):
     self.patcher.stop()
     shutil.rmtree(self.test_dir)
-    ConfigManager._instance = None
 ```
 
 ### Strategy 測試

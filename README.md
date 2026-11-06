@@ -47,10 +47,9 @@
 - 規則可為「網頁」或「程式」（程式路徑、參數、起始目錄），觸發方式擇一：**整點時段**（起訖整點，含邊界；預設僅週一至週五）、**每天**或**週一～週日**（起訖整點，僅在指定星期觸發，例如每周末重啟選「週日」）、**程式啟動時**（主程式啟動後立即執行一次，不限時段與星期）。
 - 每條規則左側有勾選方塊（☑ 啟用／☐ 停用），可個別控制；清單可左右捲動（水平捲軸或 Shift+滾輪）。
 - 同一小時同一目標只觸發一次；程式一律不經 shell、不等待結束；網頁僅允許 http/https。
-- 設定視窗可「立即測試」、編輯規則，並可**匯入 Windows 工作排程器 XML**（按鈕選檔，或直接拖入規則清單）：每日/每週觸發轉為含星期條件的整點規則，登入/開機觸發轉為「程式啟動時」規則，不支援的設定列為警告。
-- **雙擊規則**：網頁直接開啟；程式須先通過「設定驗證」（程式存在、類型支援、起始目錄、時段與星期正確）與「簡易安全檢查」，再經確認視窗才執行。未通過的規則在清單中以紅色標示；安全檢查未通過時須在確認視窗明確授權才會手動執行一次。
-- **簡易安全檢查**（非防毒）：拒絕關機、格式化、磁碟分割、遞迴刪除、修改開機設定等明顯破壞系統的程式與參數，並掃描批次檔與參數中指向的腳本（.bat/.cmd/.ps1/.py/.sh 等，前 256 KB）。新增規則、雙擊、「測試」與自動觸發都套用同一套檢查。
-- 設定視窗左下角的「**略過安全檢查**」勾選後，忽略上述安全檢查（設定驗證仍有效）：可新增與自動執行 shutdown 等指令，清單不再以紅色標示。
+- 設定視窗可「立即測試」、編輯規則，並可**匯入 Windows 工作排程器 XML**（按鈕選檔，或直接拖入規則清單）：每日/每週觸發轉為含星期條件的整點規則，登入/開機觸發轉為「程式啟動時」規則，不支援的設定列為警告。匯入的程式規則預設停用。
+- **啟用及手動執行程式規則**：啟用已停用的程式規則，或雙擊、測試程式規則時，須先通過設定驗證，並確認視窗顯示的程式、參數與起始目錄；設定錯誤的規則以紅色標示，不能啟用或執行。網頁雙擊後直接開啟。
+- 程式規則僅驗證程式存在與類型、起始目錄、參數及時段、星期等設定，**不掃描腳本或判斷命令是否安全**；執行前請自行確認來源與完整指令。自動執行也會驗證設定，但不逐次顯示確認視窗。
 - 可獨立暫停/啟動。
 
 ### 待辦事項
@@ -79,12 +78,12 @@
 ```
 
 ### 勿擾模式
-- 一鍵「立即開始勿擾 / 結束勿擾」：進入勿擾時停止番茄鐘並暫停提醒與整點啟動（含「程式啟動時」規則與待辦到期提醒），結束後恢復切換前的暫停狀態。
+- 一鍵「立即開始勿擾 / 結束勿擾」：進入勿擾時停止番茄鐘並暫停提醒與整點啟動（含「程式啟動時」規則與待辦到期提醒）。手動、排程及行事曆來源可共存；最後一個勿擾來源結束時才解除勿擾造成的暫停，原本手動暫停的功能維持暫停。若目前只有自動來源，手動結束會釋放這些來源，同一事件或排程區間不會立即重新啟動。
 - **勿擾排程**：設定日期範圍與備註（勾選「單日勿擾」只需設定開始日期，免填結束日期），到期自動進入/離開勿擾；已過期或無效的排程自動清除。
 - **行事曆同步（Outlook ICS）**：於「勿擾模式 › 行事曆同步設定…」貼上 Outlook 網頁版發佈行事曆的 ICS 連結（僅接受 https，`webcal://` 會自動轉換），啟用後會在行事曆事件進行中自動進入勿擾，事件結束自動離開。
   - 背景執行緒依「同步間隔」（預設 15 分鐘）抓取事件（涵蓋前 1 天至後 7 天，含週期事件、略過已取消的事件），重疊或相接的事件合併為一段；抓取失敗時沿用上次的快取。
   - 事件開始時彈出「會議中...」提示，結束時自動關閉；開始前 N 分鐘（預設 10，0 = 不預告）會預告「將自動進入勿擾模式」。
-  - 只會結束由行事曆自己啟動的勿擾；手動開啟的勿擾不會被自動關閉，且手動勿擾期間不重複觸發。
+  - 行事曆只會結束自己的勿擾來源，不會關閉仍由手動或排程持有的勿擾。
   - 設定視窗提供「測試連線」，回報解析到的事件數。ICS 連結含密鑰，僅存於本機設定檔，日誌不記錄完整網址。
   - ICS 由 Outlook 發佈後可能延遲數分鐘至數小時，加上同步間隔，新增的會議不一定立刻生效。
 
@@ -169,7 +168,7 @@ start "" "<Python 安裝資料夾>\pythonw.exe" "main.py"
 
 ```mermaid
 flowchart TB
-    MAIN["main.py<br/>啟動 / DPI 宣告 / DI Container"]
+    MAIN["main.py<br/>啟動 / DPI 宣告 / 建立設定管理器"]
 
     subgraph UI_Layer["UI 層 (ui/)"]
         direction LR
@@ -191,7 +190,7 @@ flowchart TB
         POMO["pomodoro / countdown"]
         REMS["reminder / hourly_web / todo / vacation_schedule / calendar_sync"]
         MISC["pause_manager / timezone / keyboard"]
-        CFG["config_service<br/>ConfigManager (Singleton)"]
+        CFG["config_service<br/>ConfigManager"]
     end
 
     STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 待辦到期 / 番茄鐘 / 勿擾排程 / 行事曆"]
@@ -213,22 +212,21 @@ flowchart TB
 
 ```
 digital_clock/
-├── main.py                      # 進入點：日誌、DPI 宣告、建立 Container 並啟動
+├── main.py                      # 進入點：日誌、DPI 宣告、建立設定管理器並啟動
 ├── core/
 │   ├── clock_logic.py           # ClockLogic：協調各服務、事件通知、延遲儲存
 │   ├── events.py                # Events 事件名稱常數
 │   ├── observer.py              # Observer 抽象介面
-│   ├── container.py             # ServiceContainer（DI）
 │   ├── launch_rules.py          # 整點啟動規則共用邏輯
 │   ├── program_launcher.py      # 程式啟動（不經 shell、不等待）
-│   ├── program_safety.py        # 程式規則的設定驗證與簡易安全檢查
+│   ├── program_safety.py        # 程式規則的可執行性與設定驗證
 │   ├── task_xml_importer.py     # 工作排程器 XML 匯入
 │   ├── todo_task.py            # 待辦資料模型與日期輸入解析
 │   ├── todo_filter.py          # 待辦篩選、搜尋與統計
 │   ├── todo_commands.py        # 待辦 Command（可復原操作）與 CommandHistory
 │   └── url_validator.py         # URL 安全驗證（僅 http/https）
 ├── services/
-│   ├── config_service.py        # ConfigManager（Singleton）
+│   ├── config_service.py        # ConfigManager
 │   ├── pomodoro_service.py      # 番茄鐘引擎（含暫停）
 │   ├── countdown_service.py     # 倒數計時引擎
 │   ├── reminder_service.py      # 單次/週期提醒、稍後提醒
@@ -264,8 +262,6 @@ digital_clock/
 | Mediator | `core/clock_logic.py` | `ClockLogic` 協調各服務，服務透過 `notify_callback` 回報 |
 | Strategy | `strategies/` | 提醒、整點啟動、待辦到期、番茄鐘階段、勿擾排程、行事曆事件的判斷邏輯可替換，須繼承 `BaseStrategy` |
 | Command | `core/todo_commands.py` | 待辦的每個操作都是可執行、可復原的 `TodoCommand`，由 `CommandHistory`（上限 50 步）記錄，`TodoService` 負責執行與存檔 |
-| Singleton | `services/config_service.py` | `ConfigManager` 確保設定管理器唯一 |
-| DI Container | `core/container.py` | 以名稱註冊/取得服務 |
 
 ### 程式碼慣例
 - 絕對 import；snake_case 方法、PascalCase 類別、UPPER_CASE 常數；完整 type hints；Google-style 繁體中文 docstring。
@@ -284,7 +280,7 @@ python -m ruff check .
 
 - CI（`.github/workflows/ci.yml`）：ruff 檢查，以及 Ubuntu（xvfb）與 Windows 上的 unittest + coverage。
 - 非 Windows 平台不支援 `-transparentcolor` 等 Windows 視窗屬性，程式會略過；少數測試依賴 Windows 行為（如 `shutdown.exe`），在其他平台自動略過。
-- 測試使用標準庫 `unittest`；涉及 `ConfigManager` 時須先 `ConfigManager._instance = None` 重設單例，並 mock `Path.home()`。
+- 測試使用標準庫 `unittest`；涉及 `ConfigManager` 時應 mock `Path.home()`，避免讀寫使用者設定。
 - 部分 UI 測試需要可用的顯示器，無顯示器時會自動略過。
 - 更多開發約定見 [AGENTS.md](AGENTS.md)。
 

@@ -316,8 +316,8 @@ class ClockLogic:
         is_paused = self.pause_manager.get_pause_state('reminder', config=config_snapshot)
         self.reminder_service.check_reminders(is_paused, now=check_time, config=config_snapshot)
 
-    def update_hourly_web_reminder(self, url_rules: list[dict], skip_safety: bool | None = None) -> None:
-        self.hourly_service.update_config(url_rules, skip_safety)
+    def update_hourly_web_reminder(self, url_rules: list[dict]) -> None:
+        self.hourly_service.update_config(url_rules)
 
     def toggle_hourly_web_pause(self) -> None:
         self.pause_manager.toggle_pause('hourly_web')

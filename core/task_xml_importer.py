@@ -168,7 +168,9 @@ def parse_task_xml(data: bytes) -> ImportResult:
                 continue
             seen_startup = True
         for action in actions:
-            rule: dict[str, Any] = {'type': RULE_PROGRAM, **action}
+            # 外部 XML 描述的是要執行的程式；匯入後先停用，使用者必須在
+            # 規則清單確認完整命令後主動啟用。
+            rule: dict[str, Any] = {'type': RULE_PROGRAM, 'enabled': False, **action}
             if hour is None:
                 rule['trigger'] = TRIGGER_STARTUP
             else:

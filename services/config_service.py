@@ -4,30 +4,13 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
-    """管理應用程式的設定檔，包括載入、儲存和合併。單例模式。"""
-
-    _instance: Optional['ConfigManager'] = None
-
-    def __new__(cls, config_filename: str = "config.json") -> 'ConfigManager':
-        """
-        單例模式建構子。
-
-        Args:
-            config_filename: 設定檔名稱
-
-        Returns:
-            ConfigManager 實例
-        """
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
+    """管理應用程式的設定檔，包括載入、儲存和合併。"""
 
     def __init__(self, config_filename: str = "config.json") -> None:
         """
@@ -36,9 +19,6 @@ class ConfigManager:
         Args:
             config_filename: 設定檔名稱
         """
-        if getattr(self, '_initialized', False):
-            return
-
         self.config_dir = Path.home() / '.digital_clock'
         self.config_file = self.config_dir / config_filename
         self.default_config: dict[str, Any] = {
@@ -122,13 +102,17 @@ class ConfigManager:
                 "refresh_minutes": 15,
                 "lead_minutes": 10  # 事件開始前幾分鐘預告（0 = 不預告）
             },
+            "pause_sources": {
+                "reminder": [],
+                "hourly_web": []
+            },
+            "vacation_sources": [],
             "hourly_web_reminder": {
                 "enabled": False,
                 "url": "",
                 "start_hour": 8,
                 "end_hour": 17,
                 "work_days_only": True,  # 是否僅在上班日（週一至週五）觸發
-                "skip_safety_check": False,  # True 時忽略程式規則的安全檢查（可執行 shutdown 等）
                 "url_rules": []  # [{url | type=program+command/arguments/working_dir, start_hour, end_hour, weekdays?, enabled?, trigger?=startup}]
             },
             "todo": {

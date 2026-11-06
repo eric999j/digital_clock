@@ -24,9 +24,9 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 
 | 層 | 目錄 | 說明 |
 |---|---|---|
-| Entry | `main.py` | 建立 DI Container → `DigitalClock.run()` |
+| Entry | `main.py` | 建立 ConfigManager → `DigitalClock.run()` |
 | UI | `ui/` | tkinter 視窗，實作 `Observer`。**所有 UI 操作必須在主線程** |
-| Core | `core/` | `ClockLogic`（Mediator）、`Observer`（ABC）、`Events`（常數）、`ServiceContainer`（DI） |
+| Core | `core/` | `ClockLogic`（Mediator）、`Observer`（ABC）、`Events`（常數） |
 | Services | `services/` | 各功能引擎，透過 `notify_callback` 與 `ClockLogic` 通訊 |
 | Strategies | `strategies/` | `BaseStrategy`（ABC）→ 可替換演算法（提醒、整點網頁、番茄鐘） |
 
@@ -46,10 +46,8 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 
 | 模式 | 檔案 | 注意 |
 |---|---|---|
-| Singleton | `services/config_service.py` | 測試中須重設 `ConfigManager._instance = None` |
 | Observer | `core/observer.py` | UI 實作 `update(event, *args, **kwargs)` |
 | Strategy | `strategies/base.py` | 新策略必須繼承 `BaseStrategy` 並實作 `check()` |
-| DI Container | `core/container.py` | name-based `register`/`get` |
 | Command | `core/todo_commands.py` | `TodoCommand.execute()` 回傳 False 表示無變更（不入歷史）；redo 會重新 `execute()`，需可重入 |
 
 ### Strategy 回傳型別規範
@@ -66,7 +64,6 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 
 - 框架：**unittest**（標準庫）
 - 執行：`python -m unittest discover -s tests`
-- ConfigManager 測試需先 `ConfigManager._instance = None` 重設 Singleton
 - Strategy 有狀態（如 `last_triggered_hour`），測試間需確保隔離
 - 設定檔路徑 `~/.digital_clock/config.json`，測試時 mock `Path.home()`
 - Strategy mock 回傳值須符合型別：`ReminderStrategy` → `([], "")` tuple；`HourlyWebReminderStrategy` → `[]`（規則 dict 清單）
@@ -76,7 +73,7 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 
 | 模組 | 說明 |
 |---|---|
-| `services/pause_manager.py` | 統一管理 reminder/hourly_web/vacation 暫停狀態，勿在 service 直接讀寫 paused 欄位。**`toggle_vacation()` 不再接收 pomodoro_stop 參數**——須先呼叫 `set_pomodoro_stop(callback)` 注入 |
+| `services/pause_manager.py` | 以來源集合管理 reminder/hourly_web/vacation 暫停狀態，勿在 service 直接讀寫 paused 欄位。勿擾來源使用 `set_vacation_source()` 管理；手動結束僅由自動來源持有的勿擾時會釋放自動來源。番茄鐘停止回呼須以 `set_pomodoro_stop(callback)` 注入 |
 | `services/reminder_service.py` | 持有 `_last_weekly_minute_key`（週期提醒去重狀態）；呼叫 Strategy 時傳入並接收 tuple |
 | `services/pomodoro_service.py` | `__init__` 接收 `Callable[[], dict]` getter，每次 `start_focus/break` 才讀取最新設定 |
 | `ui/popup_utils.py` | 提供非阻塞提醒彈窗，**支援 Markdown 行內語法渲染**（粗體、斜體、code、連結、URL）。**禁止直接使用 `tkinter.messagebox`**——所有確認、錯誤、通知彈窗均須呼叫此模組函數，確保主題配色一致 |
@@ -106,7 +103,7 @@ Python 3.13 + `pynput`（Windows 另需 `tzdata`，供多時區使用）；`tkin
 
 - 無 `type` 的規則視為網頁；`type=program` 是程式。共用邏輯在 `core/launch_rules.py`。
 - 規則可選欄位：`enabled`（預設 true，false 時不觸發）、`trigger: "startup"`（主程式啟動時由 `ClockLogic.start()` → `HourlyWebService.run_startup_rules()` 執行一次，不帶時段／星期；Strategy 的整點比對會略過）。
-- `hourly_web_reminder.skip_safety_check`（設定視窗左下角勾選）為 true 時，`check_program_rule(rule, skip_safety=True)` 把 `blocked` 降為警告，自動觸發與清單紅色標示都不再攔截；設定錯誤（`errors`）仍會擋。未勾選時手動執行被攔下的規則需使用者在確認視窗授權。
+- XML 匯入的程式規則預設停用；啟用已停用規則或手動執行時，UI 顯示完整命令並要求確認。`check_program_rule(rule)` 僅驗證可執行性及設定，不掃描腳本或判斷命令安全性；設定錯誤會阻止啟用及執行。
 - 拖入 XML 由 `ui/file_drop.py`（選用依賴 `tkinterdnd2`，缺少時自動停用）處理。
 - `update_config(url_rules)` 只用第一筆網頁規則同步舊欄位；無網頁規則時清空 `url`。
 - Strategy 逐條比對 `start_hour ≤ now.hour ≤ end_hour`，回傳所有命中規則（依目標去重）。

@@ -16,18 +16,15 @@ class TestConfigManager(unittest.TestCase):
         self.patcher = patch('pathlib.Path.home', return_value=Path(self.test_dir))
         self.mock_home = self.patcher.start()
 
-        # Reset Singleton
-        ConfigManager._instance = None
 
     def tearDown(self):
         self.patcher.stop()
         shutil.rmtree(self.test_dir)
-        ConfigManager._instance = None
 
-    def test_singleton(self):
+    def test_instances_are_independent(self):
         conf1 = ConfigManager()
         conf2 = ConfigManager()
-        self.assertIs(conf1, conf2)
+        self.assertIsNot(conf1, conf2)
 
     def test_default_values(self):
         conf_mgr = ConfigManager()
@@ -60,8 +57,6 @@ class TestConfigManager(unittest.TestCase):
         config['window']['width'] = 999
         conf_mgr.save_config(config)
 
-        # Reset instance to force reload
-        ConfigManager._instance = None
         new_mgr = ConfigManager()
         new_config = new_mgr.load_config()
 
@@ -77,8 +72,6 @@ class TestConfigManager(unittest.TestCase):
         with open(conf_mgr.config_file, 'w', encoding='utf-8') as f:
             json.dump({"new_key": "new_value", "window": {"x": 100}}, f)
 
-        # Reset and reload
-        ConfigManager._instance = None
         new_mgr = ConfigManager()
         new_config = new_mgr.load_config()
 

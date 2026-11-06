@@ -65,8 +65,6 @@ class HourlyWebWindow(tk.Toplevel):
         self._editing_index: int | None = None
         self.theme = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
         self.current_config = current_config or {}
-        self._skip_safety_var = tk.BooleanVar(
-            self, value=bool(self.current_config.get('skip_safety_check', False)))
         self.transient(parent)
         self.title("整點啟動設定")
         self.geometry(_ensure_min_height(geometry))
@@ -105,11 +103,6 @@ class HourlyWebWindow(tk.Toplevel):
                    style='HourlyWeb.TButton').pack(side=tk.RIGHT, padx=(4, 0))
         ttk.Button(btn_frame, text="儲存", command=self._on_submit,
                    style='HourlyWeb.TButton').pack(side=tk.RIGHT)
-        ttk.Checkbutton(
-            btn_frame, text="略過安全檢查（允許 shutdown 等危險指令）",
-            variable=self._skip_safety_var, command=self._on_skip_safety_changed,
-            style='HourlyWeb.TCheckbutton',
-        ).pack(side=tk.LEFT)
 
         self._create_add_form(outer)
 
@@ -309,12 +302,9 @@ class HourlyWebWindow(tk.Toplevel):
                 }]
         self._refresh_listbox(url_rules)
 
-    def _skip_safety(self) -> bool:
-        return bool(self._skip_safety_var.get())
-
     def _check_rule(self, rule: dict[str, Any]) -> RuleCheck:
-        """依「略過安全檢查」勾選狀態檢查程式規則。"""
-        return check_program_rule(rule, skip_safety=self._skip_safety())
+        """驗證程式規則是否可執行。"""
+        return check_program_rule(rule)
 
     @staticmethod
     def _row_text(rule: dict[str, Any]) -> str:
@@ -325,7 +315,7 @@ class HourlyWebWindow(tk.Toplevel):
         self._rules_listbox.delete(0, tk.END)
         for i, r in enumerate(self._rules):
             self._rules_listbox.insert(tk.END, self._row_text(r))
-            # 程式規則未通過設定驗證或安全檢查時以紅色標示，雙擊不會直接執行
+            # 程式規則未通過設定驗證時以紅色標示，雙擊不會直接執行。
             if rule_type(r) == RULE_PROGRAM and not self._check_rule(r).ok:
                 self._rules_listbox.itemconfig(i, foreground=_INVALID_ROW_FG, selectforeground=_INVALID_ROW_FG)
 
@@ -336,23 +326,48 @@ class HourlyWebWindow(tk.Toplevel):
             self._rules_listbox.selection_set(sel[0])
             self._rules_listbox.activate(sel[0])
 
-    def _on_skip_safety_changed(self) -> None:
-        """切換「略過安全檢查」後重新標示規則（危險指令不再顯示紅色）。"""
-        self._refresh_keep_selection(self._rules)
-
     def _toggle_rule(self, index: int) -> None:
         if not 0 <= index < len(self._rules):
             return
+        rule = self._rules[index]
+        if is_rule_enabled(rule):
+            self._set_rule_enabled(index, False)
+            return
+        if rule_type(rule) == RULE_PROGRAM:
+            self._confirm_enable_program_rule(index, rule)
+            return
+        self._set_rule_enabled(index, True)
+
+    def _set_rule_enabled(self, index: int, enabled: bool) -> None:
+        """更新單一規則的啟用狀態，且不修改呼叫端持有的原 dict。"""
         rules = list(self._rules)
         rule = dict(rules[index])
-        if is_rule_enabled(rule):
-            rule['enabled'] = False
-        else:
+        if enabled:
             rule.pop('enabled', None)
+        else:
+            rule['enabled'] = False
         rules[index] = rule
         self._refresh_listbox(rules)
         self._rules_listbox.selection_set(index)
         self._rules_listbox.activate(index)
+
+    def _confirm_enable_program_rule(self, index: int, rule: dict[str, Any]) -> None:
+        """啟用外部程式前展示完整命令，避免把 XML 視為可信任輸入。"""
+        check = self._check_rule(rule)
+        if check.errors:
+            self._show_error(self._format_issues("此程式規則設定不正確，無法啟用：", check.errors))
+            return
+        lines = ["啟用後，程式會依規則自動執行。請確認：", "", f"程式：{rule_target(rule)}"]
+        arguments = str(rule.get('arguments', '')).strip()
+        working_dir = str(rule.get('working_dir', '')).strip()
+        if arguments:
+            lines.append(f"參數：{arguments}")
+        if working_dir:
+            lines.append(f"起始目錄：{working_dir}")
+        themed_confirm(
+            self, "\n".join(lines), lambda: self._set_rule_enabled(index, True), self.theme,
+            title="確認啟用程式規則", yes_text="啟用", no_text="取消",
+        )
 
     def _toggle_selected_rule(self, _event: tk.Event | None = None) -> str:
         sel = self._rules_listbox.curselection()
@@ -442,11 +457,6 @@ class HourlyWebWindow(tk.Toplevel):
                 **kept,
                 **hours,
             }
-            blocked = self._check_rule(rule).blocked
-            if blocked:
-                raise ValueError(
-                    "安全檢查未通過，無法新增此程式規則（可勾選左下角「略過安全檢查」）：\n"
-                    + "\n".join(f"- {m}" for m in blocked))
             return rule
         if not is_safe_url(target):
             raise ValueError("請使用以 http:// 或 https:// 開頭的有效網址。")
@@ -555,7 +565,7 @@ class HourlyWebWindow(tk.Toplevel):
             self._rules_menu.grab_release()
 
     def _open_selected_rule_url(self, _event: tk.Event | None = None) -> None:
-        """執行選取的規則（雙擊或右鍵「執行規則」）：網頁直接開啟；程式須通過設定驗證與安全檢查並經使用者確認才執行。"""
+        """執行選取的規則；程式須通過設定驗證並經使用者確認才執行。"""
         sel = self._rules_listbox.curselection()
         if not sel:
             return
@@ -582,7 +592,7 @@ class HourlyWebWindow(tk.Toplevel):
         return header + "\n" + "\n".join(f"- {issue}" for issue in issues)
 
     def _run_program_rule(self, rule: dict[str, Any]) -> None:
-        """依序做設定驗證、安全檢查、使用者確認；安全檢查未通過時需使用者明確授權才執行。"""
+        """驗證規則並顯示完整命令，供使用者確認後手動執行。"""
         check = self._check_rule(rule)
         if check.errors:
             self._show_error(self._format_issues("此程式規則設定不正確，無法執行：", check.errors))
@@ -594,14 +604,8 @@ class HourlyWebWindow(tk.Toplevel):
         command = rule_target(rule)
         arguments = str(rule.get('arguments', '')).strip()
         working_dir = str(rule.get('working_dir', '')).strip()
-        if check.blocked:
-            lines = [self._format_issues("安全檢查未通過：", check.blocked), "",
-                     "此程式可能影響系統，確定要授權這次手動執行嗎？",
-                     "（排程不會自動執行，除非勾選「略過安全檢查」）", ""]
-            title, yes_text = "需要授權", "授權並執行"
-        else:
-            lines = ["檢查通過，確定要執行以下程式嗎？", ""]
-            title, yes_text = "確認執行", "執行"
+        lines = ["確定要執行以下程式嗎？", ""]
+        title, yes_text = "確認執行", "執行"
         lines.append(f"程式：{command}")
         if arguments:
             lines.append(f"參數：{arguments}")
@@ -699,15 +703,7 @@ class HourlyWebWindow(tk.Toplevel):
         summary = f"{prefix}已匯入 {added} 條規則"
         if skipped:
             summary += f"（{skipped} 條重複已略過）"
-        lines = [summary + "，按「儲存」後生效。", *(f"- {w}" for w in result.warnings)]
-        any_blocked = False
-        for rule in result.rules:
-            if rule_type(rule) == RULE_PROGRAM:
-                for issue in self._check_rule(rule).blocked:
-                    any_blocked = True
-                    lines.append(f"- 未通過安全檢查（將不會執行）：{rule_target(rule)}：{issue}")
-        if any_blocked:
-            lines.append("- 若確定要執行，可勾選左下角「略過安全檢查」。")
+        lines = [summary + "；匯入的程式規則預設停用，請確認完整指令後再啟用。", *(f"- {w}" for w in result.warnings)]
         return lines
 
     def _on_submit(self) -> None:
@@ -720,5 +716,5 @@ class HourlyWebWindow(tk.Toplevel):
         if pending is not None:
             self._apply_form_rule(pending)
             rules = list(self._rules)
-        self.callback(rules, self._skip_safety())
+        self.callback(rules)
         self.destroy()

@@ -7,14 +7,13 @@ import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime, timedelta
 from tkinter import Menu, messagebox
-from typing import TYPE_CHECKING, Any
-
-logger = logging.getLogger(__name__)
+from typing import Any
 
 from core.clock_logic import ClockLogic
 from core.events import Events
 from core.observer import Observer
 from core.url_validator import is_safe_url
+from services.config_service import ConfigManager
 from services.countdown_service import CountdownService
 from ui.dpi import get_scale_factor, scale_px
 from ui.menus.context_menu import ContextMenu
@@ -22,18 +21,17 @@ from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
 from ui.window_bounds import clamp_position, get_screen_bounds
 
-if TYPE_CHECKING:
-    from core.container import ServiceContainer
+logger = logging.getLogger(__name__)
+
 
 class DigitalClock(Observer):
     """管理時鐘的UI介面與使用者互動，並作為 ClockLogic 的 Observer。"""
 
-    def __init__(self, container: 'ServiceContainer') -> None:
+    def __init__(self, config_manager: ConfigManager) -> None:
         """初始化數位時鐘 UI。"""
-        self.container = container
         self.root = tk.Tk()
         self._ui_scale: float = get_scale_factor(self.root)
-        self.logic = ClockLogic(self, self.container.get('config_manager'))
+        self.logic = ClockLogic(self, config_manager)
         self.logic.add_observer(self)  # 註冊為 observer
         self.config = self.logic.get_config()
 

@@ -133,14 +133,14 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.assertIn('設定不正確', self.errors[0])
 
     @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
-    def test_double_click_unsafe_program_requires_authorization(self):
+    def test_double_click_program_requires_explicit_confirmation(self):
         launch, confirm = self._double_click_rule(
             {'type': 'program', 'command': 'shutdown.exe', 'arguments': '/s', 'start_hour': 9, 'end_hour': 9})
         launch.assert_not_called()
         self.assertEqual(self.errors, [])
         confirm.assert_called_once()
-        self.assertIn('安全檢查未通過', confirm.call_args.args[1])
-        self.assertEqual(confirm.call_args.kwargs['yes_text'], '授權並執行')
+        self.assertIn('shutdown.exe', confirm.call_args.args[1])
+        self.assertEqual(confirm.call_args.kwargs['yes_text'], '執行')
 
     def test_double_click_valid_program_launches_only_after_user_confirms(self):
         import sys
@@ -165,15 +165,6 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         colors = [self.window._rules_listbox.itemcget(i, 'foreground') for i in range(3)]
         self.assertTrue(colors[0])
         self.assertEqual((colors[1], colors[2]), ('', ''))
-
-    @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
-    def test_adding_unsafe_program_rule_is_rejected(self):
-        self._select_type('程式')
-        self.window._add_url_entry.insert(0, 'shutdown.exe')
-        self.window._add_args_entry.insert(0, '/s /t 0')
-        self.window._add_rule()
-        self.assertEqual(self.window._rules, [])
-        self.assertIn('安全檢查未通過', self.errors[0])
 
     def test_test_button_runs_same_checks(self):
         self._select_type('程式')
@@ -235,7 +226,7 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         self.window._add_url_entry.insert(0, 'https://b.example')
         self.window._on_submit()
         self.callback.assert_called_once_with(
-            [{'url': 'https://b.example', 'weekdays': [5, 6], 'start_hour': 8, 'end_hour': 9}], False)
+            [{'url': 'https://b.example', 'weekdays': [5, 6], 'start_hour': 8, 'end_hour': 9}])
 
     def test_edit_type_change_drops_program_only_fields(self):
         self.window._refresh_listbox([self._imported_rule()])
@@ -276,54 +267,18 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         confirm.assert_called_once()
         launch.assert_not_called()  # 仍需使用者確認
 
-    def _shutdown_rule(self) -> dict:
-        return {'type': 'program', 'command': 'shutdown', 'arguments': '/r /f /t 0',
-                'start_hour': 23, 'end_hour': 23, 'weekdays': [6]}
-
-    @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
-    def test_skip_safety_checkbox_controls_red_rows_and_is_saved(self):
-        self.window._refresh_listbox([self._shutdown_rule()])
-        listbox = self.window._rules_listbox
-        self.assertTrue(listbox.itemcget(0, 'foreground'))
-
-        self.window._skip_safety_var.set(True)
-        self.window._on_skip_safety_changed()
-        self.assertEqual(listbox.itemcget(0, 'foreground'), '')
-
-        self.window._on_submit()
-        self.callback.assert_called_once_with([self._shutdown_rule()], True)
-
-    @unittest.skipUnless(sys.platform == 'win32', '依賴 Windows 的 shutdown.exe')
-    def test_skip_safety_allows_adding_and_runs_without_authorization_prompt(self):
-        self._select_type('程式')
-        self.window._add_url_entry.insert(0, 'shutdown.exe')
-        self.window._add_args_entry.insert(0, '/s /t 0')
-        self.window._add_rule()
-        self.assertEqual(self.window._rules, [])  # 未勾選時仍拒絕新增
-
-        self.window._skip_safety_var.set(True)
-        self.window._add_rule()
-        self.assertEqual(len(self.window._rules), 1)
-
-        launch, confirm = self._double_click_rule(self.window._rules[0])
+    def test_enabling_imported_program_requires_confirmation(self):
+        import sys
+        rule = {'type': 'program', 'command': sys.executable, 'arguments': '-V',
+                'start_hour': 9, 'end_hour': 9, 'enabled': False}
+        self.window._refresh_listbox([rule])
+        with patch('ui.hourly_web_window.themed_confirm') as confirm:
+            self.window._toggle_rule(0)
+        self.assertFalse(self.window._rules[0]['enabled'])
         confirm.assert_called_once()
-        self.assertNotIn('需要授權', confirm.call_args.kwargs['title'])
-
-    def test_skip_safety_state_loaded_from_config(self):
-        window = HourlyWebWindow(self.root, self.callback, None, {'skip_safety_check': True})
-        try:
-            self.assertTrue(window._skip_safety_var.get())
-        finally:
-            window.destroy()
-
-    def test_import_summary_hides_blocked_notice_when_safety_skipped(self):
-        from core.task_xml_importer import ImportResult
-        result = ImportResult(rules=[self._shutdown_rule()])
-        self.assertTrue(any('未通過安全檢查' in line for line in self.window._merge_imported(result)))
-
-        self.window._refresh_listbox([])
-        self.window._skip_safety_var.set(True)
-        self.assertFalse(any('未通過安全檢查' in line for line in self.window._merge_imported(result)))
+        self.assertIn(sys.executable, confirm.call_args.args[1])
+        confirm.call_args.args[2]()
+        self.assertNotIn('enabled', self.window._rules[0])
 
     def test_toggle_rule_checkbox_does_not_mutate_source_rule(self):
         source = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}

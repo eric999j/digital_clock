@@ -101,9 +101,11 @@ class TestHourlyWebService(unittest.TestCase):
             'type': 'program', 'command': 'python.exe', 'arguments': 'a.py', 'working_dir': 'C:\\w',
         }]
 
-        with patch('services.hourly_web_service.launch_program') as mock_launch, \
+        with patch('services.hourly_web_service.check_program_rule') as check, \
+                patch('services.hourly_web_service.launch_program') as mock_launch, \
                 patch('services.hourly_web_service.webbrowser.open') as mock_open, \
                 patch.object(self.service, '_bring_browser_to_front') as mock_bring:
+            check.return_value.errors = ()
             self.service.check(now=now, config={'hourly_web_reminder': {}})
 
         mock_launch.assert_called_once_with('python.exe', 'a.py', 'C:\\w')
@@ -124,10 +126,10 @@ class TestHourlyWebService(unittest.TestCase):
 
         mock_open.assert_called_once_with('https://safe.example', new=2)
 
-    def test_unsafe_program_rule_is_never_launched_but_others_still_run(self):
+    def test_invalid_program_rule_does_not_block_other_rules(self):
         now = datetime(2025, 1, 6, 9, 0, 0)
         self.service.strategy.check.return_value = [
-            {'type': 'program', 'command': 'shutdown.exe', 'arguments': '/s /t 0'},
+            {'type': 'program', 'command': 'missing.exe', 'arguments': '/s /t 0'},
             {'url': 'https://safe.example'},
         ]
 
@@ -162,19 +164,17 @@ class TestHourlyWebService(unittest.TestCase):
 
         self.assertEqual(config['hourly_web_reminder']['url'], '')
 
-    def test_update_config_saves_skip_safety_and_ignores_startup_rules_for_legacy_fields(self):
-        config = {'hourly_web_reminder': {}}
+    def test_update_config_removes_legacy_safety_setting_and_ignores_startup_rules_for_legacy_fields(self):
+        config = {'hourly_web_reminder': {'skip_safety_check': True}}
         self.mock_config_mgr.load_config.return_value = config
         rules = [{'url': 'https://s.example', 'trigger': 'startup'},
                  {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 12}]
 
-        self.service.update_config(rules, True)
+        self.service.update_config(rules)
 
         hw = config['hourly_web_reminder']
-        self.assertTrue(hw['skip_safety_check'])
+        self.assertNotIn('skip_safety_check', hw)
         self.assertEqual(hw['url'], 'https://a.example')
-        self.service.update_config(rules)  # None 表示維持原設定
-        self.assertTrue(hw['skip_safety_check'])
 
     def test_run_startup_rules_launches_only_enabled_startup_rules(self):
         rules = [
@@ -187,7 +187,7 @@ class TestHourlyWebService(unittest.TestCase):
                 patch.object(self.service, '_open_url') as open_url:
             self.service.run_startup_rules({'hourly_web_reminder': {'url_rules': rules}})
 
-        launch.assert_called_once_with(rules[0], False)
+        launch.assert_called_once_with(rules[0])
         open_url.assert_called_once_with('https://s.example')
 
     def test_run_startup_rules_respects_pause(self):
@@ -196,20 +196,18 @@ class TestHourlyWebService(unittest.TestCase):
             self.service.run_startup_rules({'hourly_web_reminder': {'url_rules': rules, 'paused': True}})
         launch.assert_not_called()
 
-    def test_launch_program_blocked_unless_safety_skipped(self):
-        rule = {'type': 'program', 'command': 'shutdown', 'arguments': '/r /f /t 0'}
+    def test_launch_program_does_not_run_invalid_configuration(self):
+        rule = {'type': 'program', 'command': 'missing.exe', 'arguments': '/r /f /t 0'}
         with patch('services.hourly_web_service.launch_program') as launch:
             self.service._launch_rule_program(rule)
             launch.assert_not_called()
-            self.service._launch_rule_program(rule, skip_safety=True)
-            launch.assert_called_once_with('shutdown', '/r /f /t 0', '')
 
-    def test_check_passes_skip_safety_setting_to_launch(self):
+    def test_check_passes_rule_to_launch(self):
         rule = {'type': 'program', 'command': 'shutdown'}
         self.service.strategy.check.return_value = [rule]
         with patch.object(self.service, '_launch_rule_program') as launch:
-            self.service.check(now=datetime(2025, 1, 1, 9), config={'hourly_web_reminder': {'skip_safety_check': True}})
-        launch.assert_called_once_with(rule, True)
+            self.service.check(now=datetime(2025, 1, 1, 9), config={'hourly_web_reminder': {}})
+        launch.assert_called_once_with(rule)
 
 
 if __name__ == '__main__':

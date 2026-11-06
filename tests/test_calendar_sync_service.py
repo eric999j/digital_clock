@@ -41,14 +41,34 @@ class FakePause:
     def get_vacation_source(self, config=None):
         return self.cfg.data.get('on_vacation_source') if self.cfg.data.get('on_vacation') else None
 
-    def toggle_vacation(self, source: str = 'manual') -> None:
-        self.toggles.append(source)
-        now_on = not self.cfg.data.get('on_vacation')
-        self.cfg.data['on_vacation'] = now_on
-        if now_on:
-            self.cfg.data['on_vacation_source'] = source
+    def has_vacation_source(self, source: str, config=None) -> bool:
+        return source in self.cfg.data.get('vacation_sources', [self.cfg.data.get('on_vacation_source')])
+
+    def set_vacation_source(self, source: str, active: bool) -> None:
+        sources = set(self.cfg.data.get('vacation_sources', []))
+        if not sources and self.cfg.data.get('on_vacation_source'):
+            sources.add(self.cfg.data['on_vacation_source'])
+        if active:
+            sources.add(source)
+        else:
+            sources.discard(source)
+        self.cfg.data['vacation_sources'] = sorted(sources)
+        self.cfg.data['on_vacation'] = bool(sources)
+        if sources:
+            self.cfg.data['on_vacation_source'] = sorted(sources)[0]
         else:
             self.cfg.data.pop('on_vacation_source', None)
+
+    def toggle_vacation(self, source: str = 'manual') -> None:
+        self.toggles.append(source)
+        sources = set(self.cfg.data.get('vacation_sources', []))
+        if not sources and self.cfg.data.get('on_vacation_source'):
+            sources.add(self.cfg.data['on_vacation_source'])
+        if source == 'manual' and source not in sources and sources:
+            for held_source in tuple(sources):
+                self.set_vacation_source(held_source, False)
+        else:
+            self.set_vacation_source(source, source not in sources)
 
 
 def _ev(start: str, end: str, summary: str = "會議") -> dict:
@@ -75,23 +95,25 @@ class CalendarSyncServiceTests(unittest.TestCase):
         self.assertFalse(cfg.data['on_vacation'])
         notify.assert_any_call(Events.CALENDAR_EVENT_ENDED)
 
-    def test_manual_vacation_not_taken_over_or_ended(self) -> None:
+    def test_manual_vacation_coexists_with_calendar_source(self) -> None:
         service, cfg, pause, notify = self._make()
         cfg.data['on_vacation'] = True
         cfg.data['on_vacation_source'] = 'manual'
         service._events = [_ev("2026-05-01T10:00", "2026-05-01T11:00")]
         service.check(now=NOW)
         service.check(now=datetime(2026, 5, 1, 12, 0))
-        self.assertEqual(pause.toggles, [])
+        self.assertTrue(pause.has_vacation_source('manual'))
+        self.assertFalse(pause.has_vacation_source('calendar'))
         self.assertTrue(cfg.data['on_vacation'])
 
-    def test_manual_exit_during_event_does_not_reenter(self) -> None:
+    def test_manual_exit_during_event_releases_calendar_source(self) -> None:
         service, cfg, pause, notify = self._make()
         service._events = [_ev("2026-05-01T10:00", "2026-05-01T11:00")]
         service.check(now=NOW)
         pause.toggle_vacation('manual')  # 使用者手動結束
         service.check(now=datetime(2026, 5, 1, 10, 40))
         self.assertFalse(cfg.data['on_vacation'])
+        self.assertFalse(pause.has_vacation_source('calendar'))
 
     def test_no_data_keeps_state(self) -> None:
         service, cfg, pause, notify = self._make()

@@ -181,17 +181,15 @@ class VacationScheduleService:
                 schedule['auto_started'] = True
                 newly_marked.append(schedule)
 
-        current_on_vacation = self.pause_manager.get_pause_state(
-            'vacation', config=config_data
+        owns_vacation = self.pause_manager.has_vacation_source(
+            'schedule', config=config_data
         )
-        vacation_source = self.pause_manager.get_vacation_source(config=config_data)
 
-        should_enter = bool(newly_marked) and not current_on_vacation
+        should_enter = bool(newly_marked) and not owns_vacation
         should_exit = (
             expired_had_auto_started
-            and current_on_vacation
             and not active
-            and vacation_source == 'schedule'
+            and owns_vacation
         )
 
         removed_any = bool(expired) or bool(invalid)
@@ -204,11 +202,11 @@ class VacationScheduleService:
             self.config_manager.save_config(config_data)
             self.notify(Events.VACATION_SCHEDULE_UPDATED, remaining)
 
-        # 觸發狀態變更（呼叫 toggle_vacation 會再次讀寫 config，故放在最後）
+        # 觸發狀態變更（會再次讀寫 config，故放在最後）。來源可與手動／行事曆共存。
         if should_enter:
-            self.pause_manager.toggle_vacation(source='schedule')
+            self.pause_manager.set_vacation_source('schedule', True)
         elif should_exit:
-            self.pause_manager.toggle_vacation(source='schedule')
+            self.pause_manager.set_vacation_source('schedule', False)
 
     @staticmethod
     def _to_iso(value: str | date) -> str | None:

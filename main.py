@@ -2,7 +2,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from core.container import ServiceContainer
 from services.config_service import ConfigManager
 from ui.dpi import enable_dpi_awareness
 from ui.main_window import DigitalClock
@@ -35,10 +34,7 @@ if __name__ == '__main__':
     _configure_logging()
     enable_dpi_awareness()  # 必須早於任何 tk.Tk()
 
-    container = ServiceContainer()
     config_manager = ConfigManager()
-    container.register('config_manager', config_manager)
-
-    clock = DigitalClock(container)
+    clock = DigitalClock(config_manager)
     clock.run()
 
