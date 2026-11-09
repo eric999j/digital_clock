@@ -1609,6 +1609,16 @@ class DigitalClock(Observer):
                 self._info_items.append(self.canvas.create_text(
                     width / 2, y, text=line, fill=fg_color, font=self._info_font, anchor='center',
                 ))
+            self.canvas.dtag(self._info_items[i], 'todo_link')
+            if line.startswith('待辦 '):
+                self.canvas.addtag_withtag('todo_link', self._info_items[i])
+        self.canvas.tag_bind('todo_link', '<ButtonRelease-1>', self._on_todo_link_click)
+        self.canvas.tag_bind('todo_link', '<Enter>', lambda e: self.canvas.configure(cursor='hand2'))
+        self.canvas.tag_bind('todo_link', '<Leave>', lambda e: self.canvas.configure(cursor=''))
+
+    def _on_todo_link_click(self, event: tk.Event) -> None:
+        """單擊「待辦 N 項」資訊列時開啟待辦視窗。"""
+        self.logic.open_todo_window()
 
     def _set_display_text_direct(self, text: str) -> None:
         """
