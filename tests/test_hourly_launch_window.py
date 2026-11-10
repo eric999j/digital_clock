@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from core.launch_rules import decode_rules_backup, encode_rules_backup
 from tests.test_task_xml_importer import _EXEC, _WEEKDAY_TRIGGER, _task_xml, _utf16
 from ui.hourly_web_window import HourlyWebWindow, _ensure_min_height
 
@@ -108,6 +109,124 @@ class TestHourlyLaunchWindow(unittest.TestCase):
         with patch('ui.hourly_web_window.filedialog.askopenfilename', return_value=''):
             self.window._import_xml()
         self.assertEqual(self.errors, [])
+
+    def test_export_includes_pending_form_without_changing_draft(self):
+        original = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}
+        self.window._refresh_listbox([original])
+        self.window._add_url_entry.insert(0, 'https://pending.example')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'backup.json'
+            with patch('ui.hourly_web_window.filedialog.asksaveasfilename', return_value=str(path)), \
+                    patch('ui.hourly_web_window.themed_info'):
+                self.window._export_rules()
+            rules, work_days_only = decode_rules_backup(path.read_text(encoding='utf-8'))
+        self.assertEqual([rule['url'] for rule in rules], ['https://a.example', 'https://pending.example'])
+        self.assertTrue(work_days_only)
+        self.assertEqual(self.window._rules, [original])
+        self.callback.assert_not_called()
+
+    def test_export_includes_pending_edit(self):
+        original = {'url': 'https://a.example', 'start_hour': 8, 'end_hour': 9}
+        self.window._refresh_listbox([original])
+        self._edit()
+        self.window._add_url_entry.delete(0, tk.END)
+        self.window._add_url_entry.insert(0, 'https://edited.example')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'backup.json'
+            with patch('ui.hourly_web_window.filedialog.asksaveasfilename', return_value=str(path)), \
+                    patch('ui.hourly_web_window.themed_info'):
+                self.window._export_rules()
+            rules, _ = decode_rules_backup(path.read_text(encoding='utf-8'))
+        self.assertEqual(rules[0]['url'], 'https://edited.example')
+        self.assertEqual(self.window._rules, [original])
+
+    def test_export_cancel_invalid_form_and_write_error(self):
+        with patch('ui.hourly_web_window.filedialog.asksaveasfilename', return_value=''):
+            self.window._export_rules()
+        self.assertEqual(self.errors, [])
+        self.window._add_url_entry.insert(0, 'invalid')
+        with patch('ui.hourly_web_window.filedialog.asksaveasfilename') as dialog:
+            self.window._export_rules()
+        dialog.assert_not_called()
+        self.assertEqual(len(self.errors), 1)
+        self.window._add_url_entry.delete(0, tk.END)
+        with patch('ui.hourly_web_window.filedialog.asksaveasfilename', return_value='missing/backup.json'):
+            self.window._export_rules()
+        self.assertEqual(len(self.errors), 2)
+        self.callback.assert_not_called()
+
+    def test_backup_import_requires_confirmation_and_saves_together(self):
+        old = {'url': 'https://old.example', 'start_hour': 8, 'end_hour': 9}
+        url = {'url': 'https://new.example', 'start_hour': 9, 'end_hour': 10, 'enabled': False}
+        program = {'type': 'program', 'command': 'missing.exe', 'trigger': 'startup', 'name': '工作'}
+        self.window._refresh_listbox([old])
+        self._edit()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'backup.json'
+            path.write_text(encode_rules_backup([url, program, url], False), encoding='utf-8')
+            with patch('ui.hourly_web_window.filedialog.askopenfilename', return_value=str(path)), \
+                    patch('ui.hourly_web_window.themed_confirm') as confirm, \
+                    patch('ui.hourly_web_window.themed_info'):
+                self.window._import_xml()
+                self.assertEqual(self.window._rules, [old])
+                self.callback.assert_not_called()
+                confirm.assert_called_once()
+                confirm.call_args.args[2]()
+        expected = [url, {**program, 'enabled': False}, url]
+        self.assertEqual(self.window._rules, expected)
+        self.assertIsNone(self.window._editing_index)
+        self.assertEqual(self.window._add_url_entry.get(), '')
+        self.callback.assert_not_called()
+        self.window._on_submit()
+        self.callback.assert_called_once_with(expected, False)
+
+    def test_backup_cancel_invalid_file_and_mixed_drop_leave_draft_unchanged(self):
+        old = {'url': 'https://old.example', 'start_hour': 8, 'end_hour': 9}
+        self.window._refresh_listbox([old])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'backup.json'
+            path.write_text(encode_rules_backup([], False), encoding='utf-8')
+            with patch('ui.hourly_web_window.themed_confirm') as confirm:
+                self.window._on_files_dropped([str(path)])
+                confirm.assert_called_once()
+            self.assertEqual(self.window._rules, [old])
+            self.assertIsNone(self.window._imported_work_days_only)
+            self.window._on_files_dropped([str(path), 'task.xml'])
+            path.write_text('{', encoding='utf-8')
+            self.window._on_files_dropped([str(path)])
+            self.window._on_files_dropped([str(path.with_name('missing.json'))])
+        self.assertEqual(len(self.errors), 3)
+        self.assertEqual(self.window._rules, [old])
+        self.callback.assert_not_called()
+
+    def test_backup_import_cancel_window_does_not_save(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'backup.json'
+            path.write_text(encode_rules_backup([], False), encoding='utf-8')
+            with patch('ui.hourly_web_window.themed_confirm') as confirm, \
+                    patch('ui.hourly_web_window.themed_info'):
+                self.window._on_files_dropped([str(path)])
+                confirm.call_args.args[2]()
+        self.window.destroy()
+        self.callback.assert_not_called()
+
+    def test_import_export_buttons_fit_in_default_window(self):
+        self.window.transient('')
+        self.window.deiconify()
+        self.window.update()
+        outer = self.window.winfo_children()[0]
+        list_frame = next(widget for widget in outer.winfo_children()
+                          if widget.winfo_class() == 'TLabelframe' and '啟動排程規則' in widget.cget('text'))
+        button_frame = next(widget for widget in list_frame.winfo_children()
+                            if any(child.winfo_class() == 'TButton' for child in widget.winfo_children()))
+        buttons = button_frame.winfo_children()
+        self.assertEqual([button.cget('text') for button in buttons], ['匯入規則…', '匯出規則…', '刪除選取'])
+        for button in buttons:
+            self.assertGreater(button.winfo_width(), 1)
+            self.assertLessEqual(button.winfo_rootx() + button.winfo_width(),
+                                 self.window.winfo_rootx() + self.window.winfo_width())
+            self.assertLessEqual(button.winfo_rooty() + button.winfo_height(),
+                                 self.window.winfo_rooty() + self.window.winfo_height())
 
     def test_submit_includes_pending_form_rule_and_closes(self):
         self.window._add_url_entry.insert(0, 'https://pending.example')

@@ -2,8 +2,10 @@ import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+from core.launch_rules import decode_rules_backup, encode_rules_backup
 from core.program_launcher import LaunchError
 from services.hourly_web_service import HourlyWebService
+from strategies.hourly_web_strategy import HourlyWebReminderStrategy
 
 
 class TestHourlyWebService(unittest.TestCase):
@@ -163,6 +165,38 @@ class TestHourlyWebService(unittest.TestCase):
         self.service.update_config([])
 
         self.assertEqual(config['hourly_web_reminder']['url'], '')
+
+    def test_update_config_restores_workdays_without_changing_pause(self):
+        config = {'hourly_web_reminder': {'work_days_only': True, 'paused': True},
+                  'pause_sources': {'hourly_web': ['manual']}}
+        self.mock_config_mgr.load_config.return_value = config
+
+        self.service.update_config([], False)
+
+        self.assertFalse(config['hourly_web_reminder']['work_days_only'])
+        self.assertTrue(config['hourly_web_reminder']['paused'])
+        self.assertEqual(config['pause_sources']['hourly_web'], ['manual'])
+        self.mock_config_mgr.save_config.assert_called_once_with(config)
+
+    def test_update_config_keeps_workdays_when_not_supplied(self):
+        config = {'hourly_web_reminder': {'work_days_only': False}}
+        self.mock_config_mgr.load_config.return_value = config
+        self.service.update_config([])
+        self.assertFalse(config['hourly_web_reminder']['work_days_only'])
+
+    def test_restored_rules_trigger_on_weekend_without_running_programs(self):
+        url = {'url': 'https://a.example', 'start_hour': 9, 'end_hour': 9}
+        program = {'type': 'program', 'command': 'missing.exe', 'start_hour': 9, 'end_hour': 9}
+        rules, work_days_only = decode_rules_backup(encode_rules_backup([url, program], False))
+        config = {'hourly_web_reminder': {'work_days_only': True}}
+        self.mock_config_mgr.load_config.return_value = config
+        self.service.update_config(rules, work_days_only)
+        self.service.strategy = HourlyWebReminderStrategy()
+
+        with patch.object(self.service, '_run_rule', return_value=True) as run, \
+                patch.object(self.service, '_bring_browser_to_front'):
+            self.service.check(datetime(2025, 1, 4, 9), config)
+        run.assert_called_once_with(url)
 
     def test_update_config_removes_legacy_safety_setting_and_ignores_startup_rules_for_legacy_fields(self):
         config = {'hourly_web_reminder': {'skip_safety_check': True}}

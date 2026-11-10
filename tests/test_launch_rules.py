@@ -1,7 +1,10 @@
+import json
 import unittest
 
 from core.launch_rules import (
+    decode_rules_backup,
     describe_rule,
+    encode_rules_backup,
     format_weekdays,
     is_rule_enabled,
     is_startup_rule,
@@ -12,6 +15,35 @@ from core.launch_rules import (
 
 
 class TestLaunchRules(unittest.TestCase):
+    def test_backup_round_trip_preserves_rules_and_disables_programs(self):
+        url = {'url': 'https://a.example', 'start_hour': 9, 'end_hour': 12,
+               'weekdays': [0, 2], 'enabled': False}
+        program = {'type': 'program', 'command': 'C:\\missing.exe', 'arguments': 'job.py',
+                   'working_dir': 'C:\\other', 'name': '工作', 'trigger': 'startup'}
+        rules, work_days_only = decode_rules_backup(encode_rules_backup([url, program, url], False))
+        self.assertEqual(rules, [url, {**program, 'enabled': False}, url])
+        self.assertFalse(work_days_only)
+        self.assertNotIn('enabled', program)
+
+    def test_backup_accepts_empty_rules(self):
+        self.assertEqual(decode_rules_backup(encode_rules_backup([], True)), ([], True))
+
+    def test_backup_rejects_invalid_structure_and_rules(self):
+        valid = json.loads(encode_rules_backup([{'url': 'https://a.example', 'start_hour': 9, 'end_hour': 12}], True))
+        invalid = [
+            {}, {**valid, 'version': 2}, {**valid, 'work_days_only': 1},
+            {**valid, 'url_rules': [None]},
+            {**valid, 'url_rules': [{'url': 'javascript:alert(1)', 'start_hour': 9, 'end_hour': 12}]},
+            {**valid, 'url_rules': [{'url': 'https://a.example', 'start_hour': True, 'end_hour': 12}]},
+            {**valid, 'url_rules': [{'type': 'program', 'command': 'x', 'trigger': 'startup', 'enabled': 'yes'}]},
+            {**valid, 'url_rules': [{'url': 'https://a.example', 'start_hour': 9, 'end_hour': 12, 'weekdays': [7]}]},
+        ]
+        for data in invalid:
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                decode_rules_backup(json.dumps(data))
+        with self.assertRaises(ValueError):
+            decode_rules_backup('{')
+
     def test_legacy_rule_without_type_is_url(self):
         self.assertEqual(rule_type({'url': 'https://a.example'}), 'url')
 

@@ -2,13 +2,75 @@
 
 規則仍存放於 config 的 ``hourly_web_reminder.url_rules``，舊版只有 ``url`` 的規則視為網頁規則。
 """
+import json
 from typing import Any
+
+from core.url_validator import is_safe_url
 
 RULE_URL = 'url'
 RULE_PROGRAM = 'program'
 TRIGGER_STARTUP = 'startup'
 
 _WEEKDAY_NAMES = ('一', '二', '三', '四', '五', '六', '日')
+_BACKUP_FORMAT = 'digital-clock-hourly-launch'
+_BACKUP_VERSION = 1
+
+
+def _validate_backup(data: Any) -> tuple[list[dict[str, Any]], bool]:
+    """驗證備份結構，回傳規則與上班日設定。"""
+    if not isinstance(data, dict) or data.get('format') != _BACKUP_FORMAT:
+        raise ValueError('不是整點啟動規則備份。')
+    if type(data.get('version')) is not int or data['version'] != _BACKUP_VERSION:
+        raise ValueError('不支援的備份版本。')
+    rules = data.get('url_rules')
+    work_days_only = data.get('work_days_only')
+    if not isinstance(rules, list) or type(work_days_only) is not bool:
+        raise ValueError('備份缺少有效的規則清單或上班日設定。')
+    for index, rule in enumerate(rules, 1):
+        if not isinstance(rule, dict):
+            raise ValueError(f'第 {index} 條規則格式錯誤。')
+        if rule.get('type', RULE_URL) not in (RULE_URL, RULE_PROGRAM):
+            raise ValueError(f'第 {index} 條規則的類型無效。')
+        target_key = 'command' if rule_type(rule) == RULE_PROGRAM else 'url'
+        target = rule.get(target_key)
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError(f'第 {index} 條規則缺少啟動目標。')
+        if target_key == 'url' and not is_safe_url(target):
+            raise ValueError(f'第 {index} 條規則的網址無效。')
+        if rule.get('trigger', '') not in ('', TRIGGER_STARTUP):
+            raise ValueError(f'第 {index} 條規則的觸發方式無效。')
+        for key in ('arguments', 'working_dir', 'name'):
+            if key in rule and not isinstance(rule[key], str):
+                raise ValueError(f'第 {index} 條規則的 {key} 格式錯誤。')
+        if 'enabled' in rule and type(rule['enabled']) is not bool:
+            raise ValueError(f'第 {index} 條規則的啟用狀態無效。')
+        if not is_startup_rule(rule) or 'start_hour' in rule or 'end_hour' in rule:
+            start, end = rule.get('start_hour'), rule.get('end_hour')
+            if type(start) is not int or type(end) is not int or not 0 <= start <= end <= 23:
+                raise ValueError(f'第 {index} 條規則的時段無效。')
+        if 'weekdays' in rule:
+            days = rule['weekdays']
+            if not isinstance(days, list) or any(type(day) is not int or not 0 <= day <= 6 for day in days):
+                raise ValueError(f'第 {index} 條規則的星期設定無效。')
+    return rules, work_days_only
+
+
+def encode_rules_backup(rules: list[dict[str, Any]], work_days_only: bool) -> str:
+    """將規則及上班日設定序列化為版本化備份。"""
+    data = {'format': _BACKUP_FORMAT, 'version': _BACKUP_VERSION,
+            'work_days_only': work_days_only, 'url_rules': rules}
+    _validate_backup(data)
+    return json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + '\n'
+
+
+def decode_rules_backup(text: str) -> tuple[list[dict[str, Any]], bool]:
+    """讀取規則備份；程式規則一律停用，須經確認後啟用。"""
+    try:
+        data = json.loads(text)
+    except (ValueError, RecursionError) as error:
+        raise ValueError('JSON 格式錯誤。') from error
+    rules, work_days_only = _validate_backup(data)
+    return [dict(rule, enabled=False) if rule_type(rule) == RULE_PROGRAM else rule for rule in rules], work_days_only
 
 
 def is_startup_rule(rule: dict[str, Any]) -> bool:

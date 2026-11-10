@@ -43,15 +43,18 @@ class HourlyWebService:
     def config(self) -> dict[str, Any]:
         return self.config_manager.load_config()
 
-    def update_config(self, url_rules: list[dict]) -> None:
+    def update_config(self, url_rules: list[dict], work_days_only: bool | None = None) -> None:
         """更新整點啟動規則，並將第一筆網頁規則同步到 url/start_hour/end_hour 供舊版相容。
 
         Args:
             url_rules: 規則清單
+            work_days_only: 可選的上班日設定；未提供時維持現有設定
         """
         config = self.config
         hw = config.setdefault('hourly_web_reminder', {})
         hw['url_rules'] = url_rules
+        if work_days_only is not None:
+            hw['work_days_only'] = work_days_only
         # 舊版啟發式安全檢查已移除；避免殘留設定被誤解為安全邊界。
         hw.pop('skip_safety_check', None)
         first_url_rule = next(

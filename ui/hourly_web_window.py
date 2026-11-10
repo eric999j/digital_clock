@@ -1,4 +1,4 @@
-"""整點啟動設定視窗：設定整點自動開啟的網頁或程式，並可匯入工作排程器 XML。"""
+"""整點啟動設定視窗：設定、匯入及匯出網頁或程式啟動規則。"""
 import re
 import tkinter as tk
 import webbrowser
@@ -12,7 +12,9 @@ from core.launch_rules import (
     RULE_PROGRAM,
     RULE_URL,
     TRIGGER_STARTUP,
+    decode_rules_backup,
     describe_rule,
+    encode_rules_backup,
     is_rule_enabled,
     is_startup_rule,
     merge_rules,
@@ -65,6 +67,8 @@ class HourlyWebWindow(tk.Toplevel):
         self._editing_index: int | None = None
         self.theme = theme or {'bg': '#F0F0F0', 'fg': '#000000'}
         self.current_config = current_config or {}
+        self._work_days_only = self.current_config.get('work_days_only', True)
+        self._imported_work_days_only: bool | None = None
         self.transient(parent)
         self.title("整點啟動設定")
         self.geometry(_ensure_min_height(geometry))
@@ -108,19 +112,21 @@ class HourlyWebWindow(tk.Toplevel):
 
         ttk.Label(
             outer,
-            text="整點或程式啟動時自動開啟網頁／程式，可將工作排程 XML 拖入清單匯入。",
+            text="整點或程式啟動時自動開啟網頁／程式，可將規則備份或工作排程 XML 拖入清單。",
             wraplength=520, justify=tk.LEFT, style='HourlyWeb.TLabel',
         ).pack(fill=tk.X, pady=(0, 6))
 
         # 規則清單（佔剩餘空間）
-        list_frame = ttk.LabelFrame(outer, text="啟動排程規則（☑ 啟用；可拖入 XML）", padding="6",
+        list_frame = ttk.LabelFrame(outer, text="啟動排程規則（☑ 啟用；可拖入檔案）", padding="6",
                                     style='HourlyWeb.TLabelframe')
         list_frame.pack(fill=tk.BOTH, expand=True)
 
         list_buttons = ttk.Frame(list_frame, style='HourlyWeb.TFrame')
         list_buttons.pack(fill=tk.X, side=tk.BOTTOM, pady=(4, 0))
-        ttk.Button(list_buttons, text="匯入工作排程 XML…", command=self._import_xml,
+        ttk.Button(list_buttons, text="匯入規則…", command=self._import_xml,
                    style='HourlyWeb.TButton').pack(side=tk.LEFT)
+        ttk.Button(list_buttons, text="匯出規則…", command=self._export_rules,
+               style='HourlyWeb.TButton').pack(side=tk.LEFT, padx=(4, 0))
         ttk.Button(list_buttons, text="刪除選取", command=self._remove_rule,
                    style='HourlyWeb.TButton').pack(side=tk.RIGHT)
 
@@ -657,17 +663,80 @@ class HourlyWebWindow(tk.Toplevel):
             self._show_error(f"無法開啟網頁：{e}")
 
     def _import_xml(self) -> None:
-        """以檔案對話框選擇工作排程器 XML 匯入。"""
+        """以檔案對話框選擇規則備份或工作排程器 XML。"""
         path = filedialog.askopenfilename(
-            parent=self, title="匯入工作排程器 XML",
-            filetypes=[("工作排程器 XML", "*.xml"), ("所有檔案", "*.*")],
+            parent=self, title="匯入規則",
+            filetypes=[("規則備份與工作排程器 XML", "*.json *.xml"),
+                       ("規則備份", "*.json"), ("工作排程器 XML", "*.xml"), ("所有檔案", "*.*")],
         )
         if path:
-            self._import_xml_files([path])
+            self._import_files([path])
+
+    def _export_rules(self) -> None:
+        """匯出目前草稿與表單內容至使用者選擇的備份檔案。"""
+        try:
+            pending = self._build_rule_from_form()
+            rules = list(self._rules)
+            if pending is not None:
+                if self._editing_rule() is not None:
+                    rules[self._editing_index] = pending
+                else:
+                    rules.append(pending)
+            text = encode_rules_backup(rules, self._work_days_only)
+        except (ValueError, TypeError, RecursionError) as error:
+            self._show_error(f"無法匯出規則：{error}")
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self, title="匯出規則", defaultextension=".json",
+            initialfile="hourly-launch-rules.json", filetypes=[("規則備份", "*.json")],
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(text, encoding='utf-8')
+        except (OSError, UnicodeError) as error:
+            self._show_error(f"無法匯出規則：{error}")
+            return
+        themed_info(self, "規則已匯出。", self.theme, title="匯出完成", ok_text="確定")
 
     def _on_files_dropped(self, paths: list[str]) -> None:
         """檔案拖入規則區域時匯入。"""
-        self._import_xml_files(paths)
+        self._import_files(paths)
+
+    def _import_files(self, paths: list[str]) -> None:
+        """依副檔名分派備份與工作排程器檔案。"""
+        if not paths:
+            return
+        if any(Path(path).suffix.lower() == '.json' for path in paths):
+            if len(paths) != 1:
+                self._show_error("規則備份請一次匯入一個檔案，不能與其他檔案一起匯入。")
+                return
+            self._import_backup(paths[0])
+        else:
+            self._import_xml_files(paths)
+
+    def _import_backup(self, path: str) -> None:
+        """驗證備份並在使用者確認後取代目前草稿。"""
+        try:
+            text = Path(path).read_text(encoding='utf-8-sig')
+            rules, work_days_only = decode_rules_backup(text)
+        except (OSError, UnicodeError, ValueError, RecursionError) as error:
+            self._show_error(f"匯入失敗：{error}")
+            return
+
+        def apply_backup() -> None:
+            self._end_edit()
+            self._refresh_listbox(rules)
+            self._work_days_only = work_days_only
+            self._imported_work_days_only = work_days_only
+            themed_info(self, f"已載入 {len(rules)} 條規則。程式規則均已停用；請按儲存套用設定。",
+                        self.theme, title="匯入結果", ok_text="確定")
+
+        themed_confirm(
+            self, "這會取代目前規則及上班日設定，並清除尚未套用的表單內容。\n"
+                  "匯入的程式規則一律停用，請確認後再啟用。按儲存後才會生效。",
+            apply_backup, self.theme, title="確認匯入規則", yes_text="匯入", no_text="取消",
+        )
 
     def _import_xml_files(self, paths: list[str]) -> None:
         """匯入工作排程器 XML，規則加入清單（按「儲存」後才寫入設定）。"""
@@ -716,5 +785,8 @@ class HourlyWebWindow(tk.Toplevel):
         if pending is not None:
             self._apply_form_rule(pending)
             rules = list(self._rules)
-        self.callback(rules)
+        if self._imported_work_days_only is None:
+            self.callback(rules)
+        else:
+            self.callback(rules, self._imported_work_days_only)
         self.destroy()
