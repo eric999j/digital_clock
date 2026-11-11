@@ -10,13 +10,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _ICACLS_TIMEOUT_SEC = 10
+# icacls 需啟動外部行程（約 60–90 ms）；每個目錄每個行程只做一次，避免拖慢主執行緒的儲存
+_protected_dirs: set[str] = set()
 
 
 def restrict_to_owner(path: Path) -> bool:
     """
     將檔案權限限縮為僅目前使用者可讀寫。
 
-    非 Windows 使用 ``chmod 600``；Windows 以 ``icacls`` 移除繼承並只授權目前使用者。
+    非 Windows 使用 ``chmod 600``。Windows 改為限縮所在目錄（每個行程僅首次執行 icacls），
+    之後在該目錄建立的檔案會繼承僅限本人的存取權。
 
     Args:
         path: 目標檔案
@@ -31,9 +34,13 @@ def restrict_to_owner(path: Path) -> bool:
         except OSError as e:
             logger.warning("Unable to restrict permissions: %s", e)
             return False
+    directory = path.parent
+    key = str(directory.resolve())
+    if key in _protected_dirs:
+        return True
     try:
         result = subprocess.run(
-            ["icacls", str(path), "/inheritance:r", "/grant:r", f"{getpass.getuser()}:F"],
+            ["icacls", str(directory), "/inheritance:r", "/grant:r", f"{getpass.getuser()}:(OI)(CI)F"],
             capture_output=True,
             timeout=_ICACLS_TIMEOUT_SEC,
             check=False,
@@ -44,6 +51,7 @@ def restrict_to_owner(path: Path) -> bool:
     if result.returncode != 0:
         logger.warning("icacls failed with exit code %s", result.returncode)
         return False
+    _protected_dirs.add(key)
     return True
 
 
