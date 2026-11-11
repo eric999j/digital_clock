@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from services.config_service import ConfigManager
 from ui.main_window import DigitalClock
 from ui.theme_utils import contrast_ratio, random_theme
-from services.config_service import ConfigManager
 
 
 class TestRandomTheme(unittest.TestCase):
