@@ -1,3 +1,4 @@
+import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import BooleanVar, Menu
 from typing import TYPE_CHECKING
@@ -5,6 +6,7 @@ from typing import TYPE_CHECKING
 from ui.menus.countdown_menu import CountdownMenu
 from ui.menus.pomodoro_menu import PomodoroMenu
 from ui.menus.timezone_menu import TimezoneMenu
+from ui.theme_utils import BUTTON_BG, BUTTON_FG
 
 if TYPE_CHECKING:
     # 避免循環引用，只在型別檢查時匯入
@@ -78,6 +80,91 @@ class ContextMenu(Menu):
         """同步「整點提醒到期待辦」勾選狀態（開啟右鍵選單時呼叫）。"""
         self.todo_remind_var.set(self.logic.is_todo_remind_enabled())
 
+    def refresh_theme_menu(self) -> None:
+        """更新開啟中的配色清單。"""
+        window = getattr(self, '_theme_window', None)
+        if window is None or not window.winfo_exists():
+            return
+        self._theme_keys = [key for key in self.ui.config['themes'] if key != '__random__'] + ['__random__']
+        self._theme_list.delete(0, tk.END)
+        for key in self._theme_keys:
+            label = '隨機配色' if key == '__random__' else self.ui.config['themes'][key]['name']
+            self._theme_list.insert(tk.END, label)
+        current = self.ui.config['appearance']['theme']
+        if current in self._theme_keys:
+            self._theme_list.selection_set(self._theme_keys.index(current))
+        theme = self.ui._get_current_theme()
+        if theme:
+            window.configure(bg=theme['bg'])
+            self._theme_list.configure(bg=theme['bg'], fg=theme['fg'],
+                                       selectbackground=theme['fg'], selectforeground=theme['bg'])
+
+    def open_theme_menu(self) -> None:
+        """開啟支援項目右鍵的配色清單。"""
+        window = getattr(self, '_theme_window', None)
+        if window is not None and window.winfo_exists():
+            window.lift()
+            return
+        self._theme_window = tk.Toplevel(self.ui.root)
+        self._theme_window.title('配色方案')
+        self._theme_window.transient(self.ui.root)
+        self._theme_context_menu = Menu(self._theme_window, tearoff=0)
+        self._theme_context_menu.add_command(label="刪除配色")
+        self._theme_list = tk.Listbox(self._theme_window, exportselection=False, height=10, width=28)
+        scrollbar = tk.Scrollbar(self._theme_window, command=self._theme_list.yview)
+        self._theme_list.configure(yscrollcommand=scrollbar.set)
+        tk.Button(self._theme_window, text='儲存目前配色…', bg=BUTTON_BG, fg=BUTTON_FG,
+                  command=self.ui.save_current_theme).pack(side=tk.BOTTOM, pady=6)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._theme_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0), pady=6)
+        self._theme_list.bind('<ButtonRelease-1>', self._on_theme_left_click)
+        self._theme_list.bind('<Button-3>', self._on_theme_right_click)
+        self._theme_list.bind('<Return>', self._on_theme_enter)
+        self._theme_window.bind('<Escape>', lambda _event: self._theme_window.destroy())
+        self.refresh_theme_menu()
+
+    def _theme_key_at(self, y: int) -> str | None:
+        """取得指標下的配色項目。"""
+        index = self._theme_list.nearest(y)
+        bounds = self._theme_list.bbox(index)
+        if bounds is None or not bounds[1] <= y < bounds[1] + bounds[3]:
+            return None
+        return self._theme_keys[index]
+
+    def _on_theme_left_click(self, event: tk.Event) -> None:
+        key = self._theme_key_at(event.y)
+        self._select_theme(key)
+
+    def _on_theme_enter(self, event: tk.Event) -> None:
+        selection = self._theme_list.curselection()
+        if selection:
+            self._select_theme(self._theme_keys[selection[0]])
+
+    def _select_theme(self, key: str | None) -> None:
+        if key == '__random__':
+            self.ui.apply_random_theme()
+        elif key is not None:
+            self.ui.apply_theme(key)
+        self.refresh_theme_menu()
+
+    def _on_theme_right_click(self, event: tk.Event) -> str:
+        """在配色項目上顯示刪除選單。"""
+        key = self._theme_key_at(event.y)
+        if key is None or key not in self.ui.config['themes']:
+            return 'break'
+        menu = self._theme_context_menu
+        theme = self.ui._get_current_theme()
+        if theme:
+            menu.configure(bg=theme['bg'], fg=theme['fg'])
+        menu.entryconfigure(0, command=lambda: self.ui.root.after_idle(
+            lambda: self.ui.confirm_delete_theme(key)
+        ))
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+        return 'break'
+
     def _add_clock_settings_menu(self) -> None:
         """新增時鐘設定選單。"""
         clock_settings_menu = Menu(self, tearoff=0)
@@ -111,11 +198,9 @@ class ContextMenu(Menu):
         clock_settings_menu.add_separator()
 
         # 配色
-        theme_menu = Menu(clock_settings_menu, tearoff=0)
-        for key, theme in self.ui.config['themes'].items():
-            theme_menu.add_radiobutton(label=theme['name'], variable=self.ui.theme_var, value=key,
-                                      command=lambda k=key: self.ui.apply_theme(k))
-        clock_settings_menu.add_cascade(label="配色方案", menu=theme_menu)
+        clock_settings_menu.add_command(
+            label="配色方案", command=lambda: self.ui.root.after_idle(self.open_theme_menu),
+        )
         clock_settings_menu.add_separator()
 
         # 時間格式

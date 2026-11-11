@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import colorsys
+import random
 import sys
 import tkinter as tk
 import tkinter.font as tkfont
@@ -58,6 +60,40 @@ def compute_brightness(color: str | None) -> float | None:
     except ValueError:
         return None
     return (r * 299 + g * 587 + b * 114) / 1000
+
+
+def contrast_ratio(first: str, second: str) -> float:
+    """計算兩個十六進位色彩的 WCAG 對比比率。"""
+    def luminance(color: str) -> float:
+        channels = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+        linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+                  for value in channels]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    light, dark = sorted((luminance(first), luminance(second)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def random_theme(themes: list[dict[str, str]]) -> dict[str, str]:
+    """依既有配色產生高對比的小幅色彩變化。"""
+    candidates = [theme for theme in themes if contrast_ratio(theme['bg'], theme['fg']) >= 4.5]
+    if not candidates:
+        candidates = [{'bg': '#1E3A5F', 'fg': '#A8D8FF'}]
+    for _ in range(100):
+        base = random.choice(candidates)
+        hue_shift = random.uniform(-0.06, 0.06)
+        colors = []
+        for key in ('bg', 'fg'):
+            color = base[key]
+            rgb = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+            hue, lightness, saturation = colorsys.rgb_to_hls(*rgb)
+            lightness = max(0, min(1, lightness + random.uniform(-0.04, 0.04)))
+            saturation = max(0, min(1, saturation + random.uniform(-0.06, 0.06)))
+            channels = colorsys.hls_to_rgb((hue + hue_shift) % 1, lightness, saturation)
+            colors.append('#' + ''.join(f'{round(channel * 255):02X}' for channel in channels))
+        if contrast_ratio(*colors) >= 4.5:
+            return {'name': '隨機配色', 'bg': colors[0], 'fg': colors[1]}
+    return {'name': '隨機配色', 'bg': candidates[0]['bg'], 'fg': candidates[0]['fg']}
 
 
 def is_dark_theme(bg: str | None) -> bool:

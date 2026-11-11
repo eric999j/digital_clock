@@ -75,6 +75,117 @@ class TestContextMenuIntegration(unittest.TestCase):
         self.assertEqual(self._labels(settings)[:2], ["多時區", "---"])
         self.assertIs(settings.nametowidget(settings.entrycget(0, "menu")), menu.timezone_menu)
 
+    def test_random_theme_is_last_and_saved_theme_is_selectable(self):
+        clock = self.clock
+        menu = clock.context_menu
+        original = clock.config['appearance']['theme']
+        try:
+            menu.open_theme_menu()
+            self.assertEqual(menu._theme_list.get(tk.END), '隨機配色')
+            menu._select_theme('__random__')
+            generated = dict(clock._get_current_theme())
+            self.assertEqual(clock.config['appearance']['theme'], '__random__')
+            clock._save_named_theme('測試收藏', generated)
+            key = clock.config['appearance']['theme']
+            self.assertIn('測試收藏', menu._theme_list.get(0, tk.END))
+            self.assertEqual(menu._theme_list.get(tk.END), '隨機配色')
+            menu._select_theme(key)
+            self.assertEqual(clock._get_current_theme()['bg'], generated['bg'])
+            self.assertEqual(clock.config['appearance']['theme'], key)
+            clock.logic.flush_pending_save()
+            reloaded = ConfigManager().load_config()
+            self.assertEqual(reloaded['appearance']['theme'], key)
+            self.assertEqual(reloaded['themes'][key], clock.config['themes'][key])
+            menu._select_theme('__random__')
+            self.assertEqual(clock.config['themes'][key]['bg'], generated['bg'])
+        finally:
+            clock.apply_theme(original, save=False)
+            clock.config['themes'].pop('__random__', None)
+            if 'key' in locals():
+                clock.config['themes'].pop(key, None)
+            clock.context_menu.refresh_theme_menu()
+            menu._theme_window.destroy()
+
+    def test_right_click_theme_offers_delete_and_persists_builtin_removal(self):
+        clock = self.clock
+        menu = clock.context_menu
+        original_theme = clock.config['appearance']['theme']
+        original_themes = dict(clock.config['themes'])
+        original_deleted = list(clock.config.get('deleted_themes', []))
+        try:
+            menu.open_theme_menu()
+            clock.root.update()
+            index = menu._theme_keys.index('green')
+            bounds = menu._theme_list.bbox(index)
+            popup = menu._theme_context_menu
+            with patch.object(popup, 'tk_popup') as post:
+                menu._theme_list.event_generate('<Button-3>', x=5, y=bounds[1] + 2)
+                post.assert_called_once()
+                self.assertTrue(popup.winfo_exists())
+                self.assertEqual(popup.entrycget(0, 'label'), '刪除配色')
+                popup.invoke(0)
+                clock.root.update()
+            confirm = next(child for child in clock.root.winfo_children()
+                           if isinstance(child, tk.Toplevel) and child.title() == '刪除配色')
+            outer = confirm.winfo_children()[0]
+            buttons = outer.winfo_children()[-1]
+            next(button for button in buttons.winfo_children() if button.cget('text') == '刪除').invoke()
+            clock.root.update()
+            clock.logic.flush_pending_save()
+            self.assertNotIn('green', ConfigManager().load_config()['themes'])
+            self.assertNotIn('green', menu._theme_keys)
+        finally:
+            clock.config['themes'] = original_themes
+            clock.config['deleted_themes'] = original_deleted
+            clock.apply_theme(original_theme, save=False)
+            menu._theme_window.destroy()
+
+    def test_save_theme_dialog_accepts_a_name(self):
+        clock = self.clock
+        original = clock.config['appearance']['theme']
+        before = set(clock.config['themes'])
+        try:
+            clock.save_current_theme()
+            dialog = next(child for child in clock.root.winfo_children()
+                          if isinstance(child, tk.Toplevel) and child.title() == '儲存目前配色')
+            frame = dialog.winfo_children()[0]
+            entry = next(child for child in frame.winfo_children() if isinstance(child, tk.Entry))
+            entry.insert(0, '自訂測試')
+            buttons = next(child for child in frame.winfo_children() if isinstance(child, tk.Frame))
+            next(child for child in buttons.winfo_children() if child.cget('text') == '儲存').invoke()
+            self.assertFalse(dialog.winfo_exists())
+            self.assertEqual(clock._get_current_theme()['name'], '自訂測試')
+        finally:
+            clock.apply_theme(original, save=False)
+            for key in set(clock.config['themes']) - before:
+                del clock.config['themes'][key]
+            clock.context_menu.refresh_theme_menu()
+
+    def test_delete_custom_and_random_themes(self):
+        clock = self.clock
+        menu = clock.context_menu
+        original_theme = clock.config['appearance']['theme']
+        original_themes = dict(clock.config['themes'])
+        try:
+            menu.open_theme_menu()
+            clock.apply_random_theme()
+            clock._save_named_theme('待刪收藏', dict(clock._get_current_theme()))
+            custom_key = clock.config['appearance']['theme']
+            clock._delete_theme(custom_key)
+            self.assertNotEqual(clock.config['appearance']['theme'], custom_key)
+            self.assertNotIn(custom_key, clock.config['themes'])
+            clock._delete_theme('__random__')
+            self.assertNotIn('__random__', clock.config['themes'])
+            clock.logic.flush_pending_save()
+            loaded = ConfigManager().load_config()
+            self.assertNotIn(custom_key, loaded['themes'])
+            self.assertNotIn('__random__', loaded['themes'])
+            self.assertEqual(menu._theme_list.get(tk.END), '隨機配色')
+        finally:
+            clock.config['themes'] = original_themes
+            clock.apply_theme(original_theme, save=False)
+            menu._theme_window.destroy()
+
     def test_productivity_menu_sits_below_hourly_web_and_holds_pomodoro_and_countdown(self):
         menu = self.clock.context_menu
         labels = self._labels(menu)

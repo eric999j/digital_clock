@@ -5,6 +5,7 @@ import sys
 import time
 import tkinter as tk
 import tkinter.font as tkfont
+import uuid
 from datetime import datetime, timedelta
 from tkinter import Menu, messagebox
 from typing import Any
@@ -19,6 +20,7 @@ from ui.dpi import get_scale_factor, scale_px
 from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
+from ui.theme_utils import BUTTON_BG, BUTTON_FG, random_theme, themed_confirm, themed_error
 from ui.window_bounds import clamp_position, get_screen_bounds
 
 logger = logging.getLogger(__name__)
@@ -1054,6 +1056,91 @@ class DigitalClock(Observer):
         """以目前記憶體設定排程儲存，保留連續調整的所有變更。"""
         self.logic.schedule_save(self.config)
 
+    def apply_random_theme(self) -> None:
+        """依內建配色產生並套用新的隨機配色。"""
+        templates = list(self.logic.config_manager.default_config['themes'].values())
+        self.config['themes']['__random__'] = random_theme(templates)
+        self.apply_theme('__random__')
+
+    def confirm_delete_theme(self, key: str) -> None:
+        """確認刪除指定配色。"""
+        theme = self.config['themes'].get(key)
+        if theme is None:
+            return
+        themed_confirm(
+            self.root, f"確定要刪除「{theme['name']}」嗎？",
+            lambda: self._delete_theme(key), self._get_current_theme(),
+            title="刪除配色", yes_text="刪除", no_text="取消",
+        )
+
+    def _delete_theme(self, key: str) -> None:
+        """刪除配色並在需要時切換至可用的主題。"""
+        themes = self.config['themes']
+        if key not in themes:
+            return
+        del themes[key]
+        if key in self.logic.config_manager.default_config['themes']:
+            deleted = self.config.setdefault('deleted_themes', [])
+            if key not in deleted:
+                deleted.append(key)
+        self.context_menu.refresh_theme_menu()
+        if self.config['appearance']['theme'] == key:
+            if themes:
+                self.apply_theme(next(iter(themes)))
+            else:
+                self.apply_random_theme()
+        else:
+            self._schedule_current_config_save()
+
+    def _save_named_theme(self, name: str, theme: dict[str, str]) -> None:
+        """以不重複的名稱收藏配色並立即選用。"""
+        name = name.strip()
+        if not name:
+            raise ValueError("請輸入配色名稱")
+        if len(name) > 40:
+            raise ValueError("配色名稱不可超過 40 個字")
+        if name.casefold() == '隨機配色' or any(
+            item['name'].casefold() == name.casefold() for item in self.config['themes'].values()
+        ):
+            raise ValueError("配色名稱已存在，請使用其他名稱")
+        key = f'custom_{uuid.uuid4().hex}'
+        self.config['themes'][key] = {'name': name, 'bg': theme['bg'], 'fg': theme['fg']}
+        self.context_menu.refresh_theme_menu()
+        self.apply_theme(key)
+
+    def save_current_theme(self) -> None:
+        """顯示命名視窗，收藏目前配色。"""
+        theme = self._get_current_theme()
+        if not theme:
+            return
+        theme = dict(theme)
+        dialog = tk.Toplevel(self.root)
+        dialog.title("儲存目前配色")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        dialog.configure(bg=theme['bg'])
+        frame = tk.Frame(dialog, bg=theme['bg'], padx=18, pady=14)
+        frame.pack(fill=tk.BOTH, expand=True)
+        tk.Label(frame, text="配色名稱", bg=theme['bg'], fg=theme['fg']).pack(anchor='w')
+        entry = tk.Entry(frame, width=30, bg='white', fg='black', insertbackground='black')
+        entry.pack(fill=tk.X, pady=(6, 12))
+        buttons = tk.Frame(frame, bg=theme['bg'])
+        buttons.pack(fill=tk.X)
+
+        def submit() -> None:
+            try:
+                self._save_named_theme(entry.get(), theme)
+            except ValueError as error:
+                themed_error(dialog, str(error), theme, title="無法儲存")
+                return
+            dialog.destroy()
+
+        tk.Button(buttons, text="取消", command=dialog.destroy, bg=BUTTON_BG, fg=BUTTON_FG).pack(side=tk.RIGHT)
+        tk.Button(buttons, text="儲存", command=submit, bg=BUTTON_BG, fg=BUTTON_FG).pack(side=tk.RIGHT, padx=(0, 6))
+        dialog.bind('<Return>', lambda _event: submit())
+        dialog.bind('<Escape>', lambda _event: dialog.destroy())
+        entry.focus_set()
+
     def apply_theme(self, theme_key: str, save: bool = True) -> None:
         """
         套用指定的配色主題。
@@ -1092,6 +1179,7 @@ class DigitalClock(Observer):
 
             self.config['appearance']['theme'] = theme_key
             self.theme_var.set(theme_key)
+            self.context_menu.refresh_theme_menu()
 
             # 重新繪製當前顯示的文字
             if self._current_display_text:

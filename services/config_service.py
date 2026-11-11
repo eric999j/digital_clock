@@ -94,6 +94,7 @@ class ConfigManager:
                 "walnut": {"bg": "#2D1B10", "fg": "#C4956A", "name": "深邃胡桃"},
                 "milk_tea": {"bg": "#6B4226", "fg": "#F5EAD8", "name": "柔和奶茶"}
             },
+            "deleted_themes": [],
             "reminders": [],
             "vacation_schedules": [],
             "calendar_sync": {
@@ -251,4 +252,10 @@ class ConfigManager:
                 return copy.deepcopy(default)
             return copy.deepcopy(user)
 
-        return merge(self.default_config, user_config)
+        merged = merge(self.default_config, user_config)
+        deleted = merged.get('deleted_themes')
+        if isinstance(deleted, list) and isinstance(merged.get('themes'), dict):
+            for key in deleted:
+                if isinstance(key, str) and key in self.default_config['themes']:
+                    merged['themes'].pop(key, None)
+        return merged
