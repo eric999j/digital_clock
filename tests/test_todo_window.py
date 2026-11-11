@@ -52,6 +52,26 @@ class TestTodoDueMessage(unittest.TestCase):
         self.assertIn("還有 3 項", message)
 
 
+class TestTodoImportExportDialogs(unittest.TestCase):
+    def test_import_offers_markdown_and_imports_selected_file(self) -> None:
+        window = SimpleNamespace(service=MagicMock(), theme=LIGHT, _after_change=MagicMock(), _status_var=MagicMock())
+        window.service.import_file.return_value = 1
+        with patch("ui.todo_window.filedialog.askopenfilename", return_value="todo.md") as dialog:
+            TodoWindow._import(window)
+        self.assertIn("*.md", str(dialog.call_args.kwargs["filetypes"]))
+        window.service.import_file.assert_called_once_with("todo.md")
+
+    def test_export_confirms_before_opening_save_dialog(self) -> None:
+        window = SimpleNamespace(theme=LIGHT, _export_markdown=MagicMock())
+        with patch("ui.todo_window.themed_confirm") as confirm, patch("ui.todo_window.filedialog.asksaveasfilename") as save:
+            TodoWindow._export(window)
+        save.assert_not_called()
+        self.assertIn("清空", confirm.call_args.args[1])
+        self.assertIn("匯入會附加", confirm.call_args.args[1])
+        confirm.call_args.args[2]()
+        window._export_markdown.assert_called_once()
+
+
 class TestTodoWindow(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

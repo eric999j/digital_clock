@@ -485,8 +485,9 @@ class TodoWindow(tk.Toplevel):
 
     def _import(self) -> None:
         path = filedialog.askopenfilename(
-            parent=self, title="匯入待辦（todo_list 的 tasks.json 或本程式的 todos.json）",
-            filetypes=[("JSON", "*.json"), ("所有檔案", "*.*")],
+            parent=self, title="匯入待辦（JSON 或 Markdown）",
+            filetypes=[("待辦檔案", "*.json *.md"), ("JSON", "*.json"),
+                       ("Markdown", "*.md"), ("所有檔案", "*.*")],
         )
         if not path:
             return
@@ -499,6 +500,18 @@ class TodoWindow(tk.Toplevel):
         self._status_var.set(f"已匯入 {count} 項待辦")
 
     def _export(self) -> None:
+        themed_confirm(
+            self,
+            "匯出不會清空；匯入會附加。\n"
+            "1. 先匯出檔案。\n"
+            "2. 清除搜尋、篩選選「全部」，\n"
+            "   選取所有最上層項目並按 Delete。\n"
+            "3. 確認刪除後再匯入。\n"
+            "Markdown 不含日期、優先級、專案。",
+            self._export_markdown, self.theme, title="匯出前確認", yes_text="繼續匯出", no_text="取消",
+        )
+
+    def _export_markdown(self) -> None:
         path = filedialog.asksaveasfilename(
             parent=self, title="匯出 Markdown", defaultextension=".md", initialfile="todo.md",
             filetypes=[("Markdown", "*.md"), ("所有檔案", "*.*")],

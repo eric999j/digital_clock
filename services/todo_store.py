@@ -3,6 +3,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -29,18 +30,49 @@ def parse_tasks(payload: Any) -> list[TodoTask]:
 
 def read_tasks_file(path: Path) -> list[TodoTask]:
     """
-    讀取任務檔（用於匯入 todo_list 的 tasks.json）。
+    讀取 JSON 或 Markdown 任務檔。
 
     Raises:
         OSError: 無法讀取
-        ValueError: JSON 或格式不正確
+        ValueError: 檔案格式不正確
     """
+    if path.suffix.lower() == ".md":
+        return parse_markdown(path.read_text(encoding="utf-8-sig"))
     with open(path, encoding="utf-8") as f:
         try:
             payload = json.load(f)
         except json.JSONDecodeError as e:
             raise ValueError(f"JSON 格式損毀：{e}") from e
     return parse_tasks(payload)
+
+
+def parse_markdown(content: str) -> list[TodoTask]:
+    """解析 Markdown 核取方塊清單及其縮排階層。"""
+    tasks: list[TodoTask] = []
+    parents: list[tuple[int, TodoTask]] = []
+    for line in content.splitlines():
+        match = re.match(r"^([ \t]*)[-*+]\s+\[([ xX])\]\s+(.*\S)\s*$", line)
+        if not match:
+            continue
+        indentation = len(match.group(1).expandtabs(4))
+        body = match.group(3)
+        link_match = re.fullmatch(r"\[((?:\\.|[^\]\\])*)\]\((.+)\)", body)
+        if link_match:
+            text = re.sub(r"\\([\[\]])", r"\1", link_match.group(1))
+            link = link_match.group(2)
+        else:
+            text, link = body, None
+        task = TodoTask(text, link=link, is_done=match.group(2).lower() == "x")
+        while parents and parents[-1][0] >= indentation:
+            parents.pop()
+        if parents:
+            parents[-1][1].children.append(task)
+        else:
+            tasks.append(task)
+        parents.append((indentation, task))
+    if content.strip() and not tasks:
+        raise ValueError("Markdown 檔案不含待辦核取方塊清單")
+    return tasks
 
 
 class TodoStore:

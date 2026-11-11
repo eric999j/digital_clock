@@ -306,6 +306,16 @@ class TestImportExport(TodoServiceTestBase):
         self.service.add_task("子", parent_id=parent.id)
         self.assertEqual(self.service.export_markdown(), "- [ ] 父\n  - [ ] 子\n")
 
+    def test_import_markdown_appends_and_is_undoable(self) -> None:
+        self.service.add_task("既有")
+        path = self.dir / "todo.md"
+        path.write_text("- [x] 新項目\n  - [ ] 子項\n", encoding="utf-8")
+        self.assertEqual(self.service.import_file(path), 1)
+        self.assertEqual(self.texts(), ["既有", "新項目"])
+        self.assertEqual(self.service.tasks[1].children[0].text, "子項")
+        self.assertTrue(self.service.undo())
+        self.assertEqual(self.texts(), ["既有"])
+
 
 class TestDueReminder(TodoServiceTestBase):
     NOW = datetime(2026, 11, 5, 9, 0, 0)  # 週四整點

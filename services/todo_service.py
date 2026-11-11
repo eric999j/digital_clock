@@ -240,7 +240,7 @@ class TodoService:
 
     def import_file(self, path: str | Path) -> int:
         """
-        匯入 todo_list 的 tasks.json（或本程式的 todos.json），附加到頂層。
+        匯入 JSON 或 Markdown 待辦清單，附加到頂層。
 
         Returns:
             匯入的頂層任務數
