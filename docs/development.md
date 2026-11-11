@@ -12,6 +12,12 @@ python -m ruff check .
 - 部分 UI 測試需要可用的顯示器，無顯示器時會自動略過。
 - 更多開發約定見 [AGENTS.md](../AGENTS.md)。
 
+## 設定與資料檔版本
+
+- `config.json`：整數 `schema_version`（目前為 1）。載入時缺欄位視為 0，依 `services/config_service.py` 的 `_MIGRATIONS` 逐版升級；舊 `version: "1.0"` 欄位保留相容。檔案版本高於程式支援時只記錄警告，不降級。
+- `todos.json`：`version`（目前為 1）。檔案版本高於程式支援時，載入顯示提示且拒絕覆寫，避免降級後遺失資料。
+- 設定結構有不相容變更時：遞增 `CONFIG_SCHEMA_VERSION`，並新增對應的 migration 函式與測試。
+
 ## 授權與第三方套件
 
 本專案原始碼（`core/`、`services/`、`strategies/`、`ui/`、`tests/`、`main.py`）一律以 [MIT License](../LICENSE) 授權。執行時相依的第三方套件各自遵循自己的授權，未隨原始碼散佈，也不改變本專案的授權：

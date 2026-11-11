@@ -1,5 +1,4 @@
 """待辦事項持久化：原子寫入、損毀備份、舊版匯入與 Markdown 匯出。"""
-import contextlib
 import json
 import logging
 import os
@@ -8,6 +7,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from core.file_security import restrict_to_owner
 from core.todo_task import TodoTask
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,7 @@ class TodoStore:
             path: todos.json 路徑
         """
         self.path = path
+        self._newer_version_message = ""
 
     def load(self) -> tuple[list[TodoTask], str]:
         """
@@ -92,10 +93,19 @@ class TodoStore:
         Returns:
             (任務清單, 訊息)；訊息為空字串表示正常。檔案損毀時會改名為 ``.bak`` 並回傳空清單。
         """
+        self._newer_version_message = ""
         if not self.path.exists():
             return [], ""
         try:
-            return read_tasks_file(self.path), ""
+            tasks = read_tasks_file(self.path)
+            version = self._peek_version()
+            if version > FILE_VERSION:
+                self._newer_version_message = (
+                    f"待辦檔案版本 {version} 比本程式支援的 {FILE_VERSION} 新，"
+                    "為避免資料遺失，本次不會覆寫該檔案"
+                )
+                return [], self._newer_version_message
+            return tasks, ""
         except ValueError as e:
             backup = self.path.with_name(f"{self.path.name}.bak")
             try:
@@ -108,6 +118,18 @@ class TodoStore:
             logger.error("Error reading todos file: %s", e)
             return [], f"無法讀取待辦檔案：{e}"
 
+    def _peek_version(self) -> int:
+        """讀取檔案的 ``version``；舊版純陣列或無欄位視為 1。"""
+        if self.path.suffix.lower() == ".md":
+            return FILE_VERSION
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                payload = json.load(f)
+        except (OSError, ValueError):
+            return FILE_VERSION
+        version = payload.get("version") if isinstance(payload, dict) else None
+        return version if isinstance(version, int) and not isinstance(version, bool) else FILE_VERSION
+
     def save(self, tasks: Iterable[TodoTask]) -> str:
         """
         原子寫入任務。
@@ -115,6 +137,8 @@ class TodoStore:
         Returns:
             空字串表示成功，否則為錯誤訊息
         """
+        if self._newer_version_message:
+            return self._newer_version_message
         temp_file = self.path.with_name(f"{self.path.name}.tmp")
         payload = {"version": FILE_VERSION, "tasks": [task.to_dict() for task in tasks]}
         try:
@@ -123,8 +147,7 @@ class TodoStore:
                 json.dump(payload, f, indent=4, ensure_ascii=False)
                 f.flush()
                 os.fsync(f.fileno())
-            with contextlib.suppress(OSError):
-                os.chmod(temp_file, 0o600)  # 待辦內容僅限本人讀寫
+            restrict_to_owner(temp_file)  # 待辦內容僅限本人讀寫
             os.replace(temp_file, self.path)
             return ""
         except (OSError, TypeError, ValueError) as e:

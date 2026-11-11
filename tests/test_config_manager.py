@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from services.config_service import ConfigManager
+from services.config_service import CONFIG_SCHEMA_VERSION, ConfigManager
 
 
 class TestConfigManager(unittest.TestCase):
@@ -115,6 +115,30 @@ class TestConfigManager(unittest.TestCase):
         os.utime(conf_mgr.config_file, (future_mtime, future_mtime))
         reloaded = conf_mgr.load_config()
         self.assertEqual(reloaded['window']['width'], 321)
+
+    def test_missing_schema_version_is_migrated(self):
+        conf_mgr = ConfigManager()
+        conf_mgr.config_dir.mkdir(parents=True, exist_ok=True)
+        conf_mgr.config_file.write_text(json.dumps({"version": "1.0"}), encoding='utf-8')
+        self.assertEqual(conf_mgr.load_config()['schema_version'], CONFIG_SCHEMA_VERSION)
+
+    def test_newer_schema_version_is_kept(self):
+        conf_mgr = ConfigManager()
+        conf_mgr.config_dir.mkdir(parents=True, exist_ok=True)
+        conf_mgr.config_file.write_text(json.dumps({"schema_version": 99}), encoding='utf-8')
+        self.assertEqual(conf_mgr.load_config()['schema_version'], 99)
+
+    def test_save_restricts_permissions(self):
+        conf_mgr = ConfigManager()
+        with patch('services.config_service.restrict_to_owner') as restrict:
+            conf_mgr.save_config(conf_mgr.load_config())
+        restrict.assert_called_once()
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX permission bits only')
+    def test_saved_file_mode_is_600(self):
+        conf_mgr = ConfigManager()
+        conf_mgr.save_config(conf_mgr.load_config())
+        self.assertEqual(conf_mgr.config_file.stat().st_mode & 0o777, 0o600)
 
 if __name__ == '__main__':
     unittest.main()

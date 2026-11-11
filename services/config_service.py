@@ -6,7 +6,20 @@ import os
 from pathlib import Path
 from typing import Any
 
+from core.file_security import is_overly_permissive, restrict_to_owner
+
 logger = logging.getLogger(__name__)
+
+CONFIG_SCHEMA_VERSION = 1
+
+
+def _migrate_0_to_1(config: dict[str, Any]) -> dict[str, Any]:
+    """v0（無 schema_version）→ v1：僅新增版本欄位，結構不變。"""
+    return config
+
+
+# key 為來源版本；新增 schema 變更時加入下一步並遞增 CONFIG_SCHEMA_VERSION
+_MIGRATIONS = {0: _migrate_0_to_1}
 
 
 class ConfigManager:
@@ -23,6 +36,7 @@ class ConfigManager:
         self.config_file = self.config_dir / config_filename
         self.default_config: dict[str, Any] = {
             "version": "1.0",
+            "schema_version": CONFIG_SCHEMA_VERSION,
             "window": {
                 "x": None,  # None 代表自動置中
                 "y": 0,
@@ -166,6 +180,9 @@ class ConfigManager:
                 f.flush()
                 os.fsync(f.fileno())
 
+            # ICS 連結等含密鑰，限縮為僅本人可讀寫
+            restrict_to_owner(temp_file)
+
             # 以替換方式提交完整檔案，避免程式在寫入途中中斷留下半份 JSON。
             os.replace(temp_file, self.config_file)
 
@@ -211,6 +228,9 @@ class ConfigManager:
         try:
             with open(self.config_file, encoding='utf-8') as f:
                 user_config = json.load(f)
+            if is_overly_permissive(self.config_file):
+                logger.warning("Config file is readable by other users: %s", self.config_file)
+            user_config = self._migrate(user_config)
             merged = self._merge_config(user_config)
             self._config_cache = merged
             self._cache_mtime_ns = current_mtime
@@ -221,6 +241,25 @@ class ConfigManager:
             self._config_cache = default_config
             self._cache_mtime_ns = None
             return default_config if read_only else copy.deepcopy(default_config)
+
+    def _migrate(self, user_config: Any) -> Any:
+        """依序執行 schema migration；版本較新時不降級，只記錄警告。"""
+        if not isinstance(user_config, dict):
+            return user_config
+        version = user_config.get('schema_version', 0)
+        if not isinstance(version, int) or isinstance(version, bool) or version < 0:
+            version = 0
+        if version > CONFIG_SCHEMA_VERSION:
+            logger.warning(
+                "Config schema_version %s is newer than supported %s",
+                version, CONFIG_SCHEMA_VERSION,
+            )
+            return user_config
+        while version < CONFIG_SCHEMA_VERSION:
+            user_config = _MIGRATIONS[version](user_config)
+            version += 1
+        user_config['schema_version'] = version
+        return user_config
 
     def _merge_config(self, user_config: dict[str, Any]) -> dict[str, Any]:
         """

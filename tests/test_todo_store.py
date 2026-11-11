@@ -36,6 +36,16 @@ class TestTodoStore(unittest.TestCase):
         self.assertTrue(self.path.with_name("todos.json.bak").exists())
         self.assertFalse(self.path.exists())
 
+    def test_newer_version_is_not_overwritten(self) -> None:
+        self.path.parent.mkdir(parents=True)
+        original = json.dumps({"version": 99, "tasks": [{"text": "x"}]})
+        self.path.write_text(original, encoding="utf-8")
+        loaded, message = self.store.load()
+        self.assertEqual(loaded, [])
+        self.assertIn("99", message)
+        self.assertTrue(self.store.save([TodoTask("new")]))
+        self.assertEqual(self.path.read_text(encoding="utf-8"), original)
+
     def test_wrong_shape_is_treated_as_corrupted(self) -> None:
         self.path.parent.mkdir(parents=True)
         self.path.write_text('{"tasks": "oops"}', encoding="utf-8")
