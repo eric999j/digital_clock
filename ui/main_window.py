@@ -96,6 +96,7 @@ class DigitalClock(Observer):
         self._background_item: int | None = None
         self._reminder_popups: list[tk.Toplevel] = []
         self._todo_window: tk.Toplevel | None = None
+        self._notification_window: tk.Toplevel | None = None
         self._todo_pending: int = self.logic.todo_service.pending_count()
         self._last_logic_tick: datetime | None = None
 
@@ -179,6 +180,8 @@ class DigitalClock(Observer):
             Events.OPEN_VACATION_SCHEDULE_WINDOW: self._on_open_vacation_schedule_window,
             Events.OPEN_CALENDAR_SYNC_WINDOW: self._on_open_calendar_sync_window,
             Events.OPEN_TODO_WINDOW: self._on_open_todo_window,
+            Events.OPEN_NOTIFICATION_CENTER: self._on_open_notification_center,
+            Events.NOTIFICATIONS_CHANGED: self._on_notifications_changed,
             Events.TODO_UPDATED: self._on_todo_updated,
             Events.TODO_DUE: self._on_todo_due,
             Events.CALENDAR_EVENT_UPCOMING: self._on_calendar_event_upcoming,
@@ -426,6 +429,41 @@ class DigitalClock(Observer):
             return window if window is not None and window.winfo_exists() else None
         except tk.TclError:
             return None
+
+    def _live_notification_window(self) -> tk.Toplevel | None:
+        """回傳仍存在的通知中心視窗，否則 None。"""
+        window = getattr(self, '_notification_window', None)
+        try:
+            return window if window is not None and window.winfo_exists() else None
+        except tk.TclError:
+            return None
+
+    def _on_open_notification_center(self, *args) -> None:
+        """開啟通知中心；已開啟時只帶到前景。"""
+        from ui.notification_window import NotificationWindow
+
+        def open_window() -> None:
+            try:
+                existing = self._live_notification_window()
+                if existing is not None:
+                    existing.deiconify()
+                    existing.lift()
+                    existing.refresh()
+                    self.logic.notification_center.mark_all_read()
+                    return
+                self._notification_window = NotificationWindow(
+                    self.root, self.logic.notification_center, self._get_current_theme(),
+                )
+            except Exception as e:
+                logger.error("Error opening notification center: %s", e)
+
+        self.root.after_idle(open_window)
+
+    def _on_notifications_changed(self, *args) -> None:
+        """通知清單變動：同步開啟中的視窗。"""
+        window = self._live_notification_window()
+        if window is not None:
+            window.refresh()
 
     def _on_open_todo_window(self, *args) -> None:
         """開啟待辦事項視窗；已開啟時只帶到前景。"""
@@ -848,7 +886,7 @@ class DigitalClock(Observer):
             self.context_menu.timezone_menu.update_menu()
             self.context_menu.pomodoro_menu.update_menu()
             self.context_menu.refresh_todo_menu()
-            self._context_menu_open = True
+            self.context_menu.refresh_notification_menu()
             self.context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
             logger.error("Error showing context menu: %s", e)
@@ -1193,6 +1231,9 @@ class DigitalClock(Observer):
             todo_window = self._live_todo_window()
             if todo_window is not None:
                 todo_window.apply_theme(theme)
+            notification_window = self._live_notification_window()
+            if notification_window is not None:
+                notification_window.apply_theme(theme)
 
             if save:
                 self._schedule_current_config_save()

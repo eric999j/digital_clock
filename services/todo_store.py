@@ -75,6 +75,25 @@ def parse_markdown(content: str) -> list[TodoTask]:
     return tasks
 
 
+def file_version(path: Path) -> int:
+    """讀取檔案的 ``version``；Markdown、舊版純陣列或無欄位視為 1。"""
+    if path.suffix.lower() == ".md":
+        return FILE_VERSION
+    try:
+        with open(path, encoding="utf-8") as f:
+            payload = json.load(f)
+    except (OSError, ValueError):
+        return FILE_VERSION
+    version = payload.get("version") if isinstance(payload, dict) else None
+    return version if isinstance(version, int) and not isinstance(version, bool) else FILE_VERSION
+
+
+def export_json(tasks: Iterable[TodoTask]) -> str:
+    """將任務樹輸出為完整 JSON（含優先度、日期、專案、id），可無損還原。"""
+    payload = {"version": FILE_VERSION, "tasks": [task.to_dict() for task in tasks]}
+    return json.dumps(payload, indent=4, ensure_ascii=False) + "\n"
+
+
 class TodoStore:
     """待辦事項檔案存取。"""
 
@@ -119,16 +138,7 @@ class TodoStore:
             return [], f"無法讀取待辦檔案：{e}"
 
     def _peek_version(self) -> int:
-        """讀取檔案的 ``version``；舊版純陣列或無欄位視為 1。"""
-        if self.path.suffix.lower() == ".md":
-            return FILE_VERSION
-        try:
-            with open(self.path, encoding="utf-8") as f:
-                payload = json.load(f)
-        except (OSError, ValueError):
-            return FILE_VERSION
-        version = payload.get("version") if isinstance(payload, dict) else None
-        return version if isinstance(version, int) and not isinstance(version, bool) else FILE_VERSION
+        return file_version(self.path)
 
     def save(self, tasks: Iterable[TodoTask]) -> str:
         """

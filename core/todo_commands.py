@@ -326,6 +326,25 @@ class RemoveLinkCommand(TodoCommand):
             task.link = self._old_link
 
 
+class ReplaceTasksCommand(TodoCommand):
+    """以備份內容整批取代任務樹（還原備份）。"""
+
+    def __init__(self, service: "TodoService", tasks: list[TodoTask]) -> None:
+        super().__init__(service)
+        self._new = tasks
+        self._old: list[TodoTask] | None = None
+
+    def execute(self) -> bool:
+        current = self.service.tasks
+        if self._old is None:
+            self._old = list(current)
+        current[:] = self._new
+        return True
+
+    def undo(self) -> None:
+        self.service.tasks[:] = self._old or []
+
+
 class ImportTasksCommand(TodoCommand):
     """將外部任務附加到頂層。"""
 

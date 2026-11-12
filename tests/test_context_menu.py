@@ -189,7 +189,8 @@ class TestContextMenuIntegration(unittest.TestCase):
     def test_productivity_menu_sits_below_hourly_web_and_holds_pomodoro_and_countdown(self):
         menu = self.clock.context_menu
         labels = self._labels(menu)
-        self.assertEqual(labels[labels.index("待辦事項") + 1:labels.index("待辦事項") + 3], ["---", "效率提升"])
+        self.assertEqual(labels[labels.index("待辦事項") + 1:labels.index("待辦事項") + 5],
+                         ["---", "通知中心…", "---", "效率提升"])
 
         productivity = menu.nametowidget(menu.entrycget(labels.index("效率提升"), "menu"))
         self.assertEqual(self._labels(productivity), ["番茄鐘", "倒數計時"])
@@ -236,9 +237,23 @@ class TestContextMenuIntegration(unittest.TestCase):
     def test_todo_menu_sits_between_hourly_and_productivity(self):
         labels = self._labels(self.clock.context_menu)
         start = labels.index("整點啟動")
-        self.assertEqual(labels[start:start + 5], ["整點啟動", "---", "待辦事項", "---", "效率提升"])
+        self.assertEqual(labels[start:start + 7],
+                         ["整點啟動", "---", "待辦事項", "---", "通知中心…", "---", "效率提升"])
         self.assertEqual(self._labels(self.clock.context_menu.hourly_web_menu), ["設定", "暫停"])
         self.assertEqual(self._labels(self.clock.context_menu.todo_menu), ["開啟待辦事項…", "整點提醒到期待辦"])
+
+    def test_notification_menu_shows_unread_count(self):
+        menu = self.clock.context_menu
+        center = self.clock.logic.notification_center
+        center.add("reminder", "t", "m")
+        try:
+            menu.refresh_notification_menu()
+            self.assertIn("通知中心（1 則未讀）…", self._labels(menu))
+            center.mark_all_read()
+            menu.refresh_notification_menu()
+            self.assertIn("通知中心…", self._labels(menu))
+        finally:
+            center.clear()
 
     def test_todo_remind_checkbutton_toggles_setting(self):
         clock = self.clock
@@ -304,7 +319,7 @@ class TestContextMenuIntegration(unittest.TestCase):
         labels = self._labels(self.clock.context_menu)
         entries = [label for label in labels if label != "---"]
 
-        self.assertEqual(entries, ["勿擾模式", "提醒", "整點啟動", "待辦事項", "效率提升", "時鐘設定", "離開"])
+        self.assertEqual(entries, ["勿擾模式", "提醒", "整點啟動", "待辦事項", "通知中心…", "效率提升", "時鐘設定", "離開"])
         # 不應出現連續或頭尾的分隔線
         self.assertNotEqual(labels[0], "---")
         self.assertNotEqual(labels[-1], "---")

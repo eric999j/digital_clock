@@ -56,6 +56,10 @@ class ContextMenu(Menu):
         self.add_cascade(label="待辦事項", menu=self.todo_menu)
         self.add_separator()
 
+        # 通知中心（標籤顯示未讀數，開啟選單時刷新）
+        self.add_command(label="通知中心…", command=self.logic.open_notification_center)
+        self.add_separator()
+
         # 效率提升（待辦事項下方）：收納番茄鐘與倒數計時
         productivity_menu = Menu(self, tearoff=0)
 
@@ -75,6 +79,12 @@ class ContextMenu(Menu):
         self.add_separator()
 
         self.add_command(label="離開", command=self.logic.on_close)
+
+    def refresh_notification_menu(self) -> None:
+        """在選單標籤顯示通知中心未讀數（開啟右鍵選單時呼叫）。"""
+        unread = self.logic.notification_center.unread_count()
+        label = f"通知中心（{unread} 則未讀）…" if unread else "通知中心…"
+        self.entryconfigure(self.index("通知中心*"), label=label)
 
     def refresh_todo_menu(self) -> None:
         """同步「整點提醒到期待辦」勾選狀態（開啟右鍵選單時呼叫）。"""

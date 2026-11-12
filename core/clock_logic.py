@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
+from core.app_state import AppState
 from core.events import Events
 from core.observer import Observer
 from services.calendar_sync_service import CalendarSyncService
@@ -12,6 +13,7 @@ from services.config_service import ConfigManager
 from services.countdown_service import CountdownService
 from services.hourly_web_service import HourlyWebService
 from services.keyboard_service import KeyboardService
+from services.notification_center import NotificationCenter
 from services.pause_manager import PauseManager
 from services.pomodoro_service import PomodoroService
 from services.reminder_service import ReminderService
@@ -80,6 +82,12 @@ class ClockLogic:
 
         self.is_hidden: bool = False
 
+        # 跨模組狀態與通知中心：先於 UI 註冊，UI 收到事件時狀態已是最新
+        self.app_state = AppState(self.notify_observers)
+        self.notification_center = NotificationCenter(self.notify_observers)
+        self.add_observer(self.app_state)
+        self.add_observer(self.notification_center)
+
     def add_observer(self, observer: Observer) -> None:
         """註冊觀察者。"""
         if observer not in self._observers:
@@ -103,6 +111,12 @@ class ClockLogic:
 
     def start(self) -> None:
         """啟動所有背景服務和初始檢查。"""
+        self.app_state.sync(
+            on_vacation=self.is_on_vacation(),
+            reminders_paused=self.is_reminder_paused(),
+            hourly_web_paused=self.is_hourly_web_paused(),
+            todo_pending=self.todo_service.pending_count(),
+        )
         self.reminder_service.remove_expired_reminders()
         self.vacation_schedule_service.check()
         self.calendar_sync_service.start()
@@ -386,6 +400,10 @@ class ClockLogic:
     def open_hourly_web_window(self) -> None:
         """請求 UI 開啟整點網頁提醒設定視窗（透過事件解耦）。"""
         self.notify_observers(Events.OPEN_HOURLY_WEB_WINDOW)
+
+    def open_notification_center(self) -> None:
+        """請求 UI 開啟通知中心。"""
+        self.notify_observers(Events.OPEN_NOTIFICATION_CENTER)
 
     def open_todo_window(self) -> None:
         """請求 UI 開啟待辦事項視窗（透過事件解耦）。"""

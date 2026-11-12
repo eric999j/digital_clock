@@ -62,14 +62,20 @@ class TestTodoImportExportDialogs(unittest.TestCase):
         window.service.import_file.assert_called_once_with("todo.md")
 
     def test_export_confirms_before_opening_save_dialog(self) -> None:
-        window = SimpleNamespace(theme=LIGHT, _export_markdown=MagicMock())
+        window = SimpleNamespace(theme=LIGHT, _export_file=MagicMock())
         with patch("ui.todo_window.themed_confirm") as confirm, patch("ui.todo_window.filedialog.asksaveasfilename") as save:
             TodoWindow._export(window)
         save.assert_not_called()
-        self.assertIn("清空", confirm.call_args.args[1])
-        self.assertIn("匯入會附加", confirm.call_args.args[1])
+        self.assertIn("JSON", confirm.call_args.args[1])
+        self.assertIn("Markdown", confirm.call_args.args[1])
         confirm.call_args.args[2]()
-        window._export_markdown.assert_called_once()
+        window._export_file.assert_called_once()
+
+    def test_export_file_uses_selected_path(self) -> None:
+        window = SimpleNamespace(service=MagicMock(), theme=LIGHT, _status_var=MagicMock())
+        with patch("ui.todo_window.filedialog.asksaveasfilename", return_value="todo.json"):
+            TodoWindow._export_file(window)
+        window.service.export_to_file.assert_called_once_with("todo.json")
 
 
 class TestTodoWindow(unittest.TestCase):

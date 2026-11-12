@@ -317,6 +317,69 @@ class TestImportExport(TodoServiceTestBase):
         self.assertEqual(self.texts(), ["既有"])
 
 
+class TestDualExport(TodoServiceTestBase):
+    def make_rich_task(self):
+        return self.service.add_task(
+            "完整", priority="high", due_date=date(2026, 12, 1), project="專案A", link="https://example.com",
+        )
+
+    def test_json_export_roundtrips_all_fields_via_restore(self) -> None:
+        task = self.make_rich_task()
+        self.service.add_task("子", parent_id=task.id)
+        path = self.dir / "backup.json"
+        self.assertEqual(self.service.export_to_file(path), "json")
+
+        other = TodoService(StubConfigManager(self.dir / "other"), MagicMock())
+        self.assertEqual(other.restore_backup(path), 1)
+        restored = other.tasks[0]
+        self.assertEqual(
+            (restored.id, restored.priority, restored.due_date, restored.project, restored.link),
+            (task.id, "high", date(2026, 12, 1), "專案A", "https://example.com"),
+        )
+        self.assertEqual(self.texts(restored.children), ["子"])
+
+    def test_markdown_export_is_readable_and_lossy(self) -> None:
+        self.make_rich_task()
+        path = self.dir / "todo.md"
+        self.assertEqual(self.service.export_to_file(path), "md")
+        content = path.read_text(encoding="utf-8")
+        self.assertEqual(content, "- [ ] [完整](https://example.com)\n")
+
+    def test_export_rejects_unknown_extension(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.export_to_file(self.dir / "todo.txt")
+
+    def test_restore_replaces_everything_and_is_undoable(self) -> None:
+        backup_service = TodoService(StubConfigManager(self.dir / "b"), MagicMock())
+        backup_service.add_task("備份項")
+        path = self.dir / "backup.json"
+        backup_service.export_to_file(path)
+
+        self.service.add_task("現有1")
+        self.service.add_task("現有2")
+        self.notify.reset_mock()
+        self.assertEqual(self.service.restore_backup(path), 1)
+        self.assertEqual(self.texts(), ["備份項"])
+        self.notify.assert_called_once_with(Events.TODO_UPDATED, 1)
+        self.assertEqual(self.reload().tasks[0].text, "備份項")
+
+        self.assertTrue(self.service.undo())
+        self.assertEqual(self.texts(), ["現有1", "現有2"])
+        self.assertTrue(self.service.redo())
+        self.assertEqual(self.texts(), ["備份項"])
+
+    def test_restore_rejects_markdown_and_newer_version(self) -> None:
+        self.service.add_task("既有")
+        md = self.dir / "todo.md"
+        md.write_text("- [ ] x\n", encoding="utf-8")
+        newer = self.dir / "newer.json"
+        newer.write_text(json.dumps({"version": 99, "tasks": []}), encoding="utf-8")
+        for path in (md, newer):
+            with self.assertRaises(ValueError):
+                self.service.restore_backup(path)
+        self.assertEqual(self.texts(), ["既有"])
+
+
 class TestDueReminder(TodoServiceTestBase):
     NOW = datetime(2026, 11, 5, 9, 0, 0)  # 週四整點
 

@@ -171,6 +171,7 @@ class TodoWindow(tk.Toplevel):
         ttk.Button(adder, text="詳細新增…", command=self._add_dialog, style=f'{p}.TButton').pack(side=tk.LEFT, padx=(4, 0))
         ttk.Button(adder, text="匯入…", command=self._import, style=f'{p}.TButton').pack(side=tk.LEFT, padx=(12, 0))
         ttk.Button(adder, text="匯出…", command=self._export, style=f'{p}.TButton').pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Button(adder, text="還原…", command=self._restore, style=f'{p}.TButton').pack(side=tk.LEFT, padx=(4, 0))
         ttk.Button(adder, text="⊞", width=3, command=lambda: self._set_all_open(True),
                    style=f'{p}.TButton').pack(side=tk.LEFT, padx=(12, 0))
         ttk.Button(adder, text="⊟", width=3, command=lambda: self._set_all_open(False),
@@ -503,27 +504,45 @@ class TodoWindow(tk.Toplevel):
         themed_confirm(
             self,
             "匯出不會清空；匯入會附加。\n"
-            "1. 先匯出檔案。\n"
-            "2. 清除搜尋、篩選選「全部」，\n"
-            "   選取所有最上層項目並按 Delete。\n"
-            "3. 確認刪除後再匯入。\n"
-            "Markdown 不含日期、優先級、專案。",
-            self._export_markdown, self.theme, title="匯出前確認", yes_text="繼續匯出", no_text="取消",
+            "• JSON：完整備份（含日期、優先級、專案），可用「還原」復原。\n"
+            "• Markdown：方便閱讀與分享，不含日期、優先級、專案。\n"
+            "請在存檔視窗選擇格式。",
+            self._export_file, self.theme, title="匯出前確認", yes_text="繼續匯出", no_text="取消",
         )
 
-    def _export_markdown(self) -> None:
+    def _export_file(self) -> None:
         path = filedialog.asksaveasfilename(
-            parent=self, title="匯出 Markdown", defaultextension=".md", initialfile="todo.md",
-            filetypes=[("Markdown", "*.md"), ("所有檔案", "*.*")],
+            parent=self, title="匯出待辦", defaultextension=".json", initialfile="todo.json",
+            filetypes=[("JSON 完整備份", "*.json"), ("Markdown 清單", "*.md")],
         )
         if not path:
             return
         try:
-            Path(path).write_text(self.service.export_markdown(), encoding="utf-8")
-        except OSError as e:
+            self.service.export_to_file(path)
+        except (OSError, ValueError) as e:
             themed_error(self, f"匯出失敗：{e}", self.theme, title="匯出失敗")
             return
         self._status_var.set(f"已匯出至 {path}")
+
+    def _restore(self) -> None:
+        themed_confirm(
+            self, "還原會以備份取代目前所有待辦（可按「復原」取消）。\n只接受 JSON 備份。",
+            self._restore_file, self.theme, title="還原備份", yes_text="選擇備份", no_text="取消",
+        )
+
+    def _restore_file(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self, title="還原待辦備份", filetypes=[("JSON 備份", "*.json")],
+        )
+        if not path:
+            return
+        try:
+            count = self.service.restore_backup(path)
+        except (OSError, ValueError) as e:
+            themed_error(self, f"還原失敗：{e}", self.theme, title="還原失敗")
+            return
+        self._after_change()
+        self._status_var.set(f"已還原 {count} 項待辦")
 
     # ---- 折疊 ----
 

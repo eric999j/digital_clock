@@ -14,15 +14,24 @@ from core.todo_commands import (
     ImportTasksCommand,
     MoveTaskCommand,
     RemoveLinkCommand,
+    ReplaceTasksCommand,
     TodoCommand,
     ToggleDoneCommand,
     UpdateTaskCommand,
     iter_subtree,
 )
+from core.file_security import restrict_to_owner
 from core.todo_filter import TodoFilter
 from core.todo_task import PRIORITIES, PRIORITY_NORMAL, TodoTask
 from services.config_service import ConfigManager
-from services.todo_store import TodoStore, export_markdown, read_tasks_file
+from services.todo_store import (
+    FILE_VERSION,
+    TodoStore,
+    export_json,
+    export_markdown,
+    file_version,
+    read_tasks_file,
+)
 from strategies.todo_due_strategy import TodoDueStrategy
 
 logger = logging.getLogger(__name__)
@@ -260,6 +269,56 @@ class TodoService:
 
     def export_markdown(self) -> str:
         return export_markdown(self.tasks)
+
+    def export_json(self) -> str:
+        return export_json(self.tasks)
+
+    def export_to_file(self, path: str | Path) -> str:
+        """
+        依副檔名匯出：``.json`` 為完整備份，``.md`` 為可閱讀分享的清單。
+
+        Returns:
+            實際使用的格式 ``"json"`` 或 ``"md"``
+
+        Raises:
+            OSError: 無法寫入
+            ValueError: 副檔名不是 .json 或 .md
+        """
+        target = Path(path)
+        suffix = target.suffix.lower()
+        if suffix == ".json":
+            target.write_text(self.export_json(), encoding="utf-8")
+            restrict_to_owner(target)  # 完整備份含所有欄位，僅限本人讀寫
+            return "json"
+        if suffix == ".md":
+            target.write_text(self.export_markdown(), encoding="utf-8")
+            return "md"
+        raise ValueError("僅支援匯出為 .json 或 .md")
+
+    def restore_backup(self, path: str | Path) -> int:
+        """
+        以 JSON 備份取代目前所有待辦（可復原）。
+
+        Returns:
+            還原的頂層任務數
+
+        Raises:
+            OSError: 無法讀取
+            ValueError: 不是 JSON 備份、格式不正確或版本比本程式新
+        """
+        source = Path(path)
+        if source.suffix.lower() != ".json":
+            raise ValueError("還原僅支援 JSON 備份；Markdown 請使用匯入")
+        if file_version(source) > FILE_VERSION:
+            raise ValueError("備份版本比本程式支援的新，請先更新程式")
+        restored = read_tasks_file(source)
+        seen: set[str] = set()
+        for top in restored:
+            for task in iter_subtree(top):
+                if task.id in seen:
+                    task.id = str(uuid.uuid4())
+                seen.add(task.id)
+        return len(restored) if self._run(ReplaceTasksCommand(self, restored)) else 0
 
     def stats(self) -> tuple[int, int, int]:
         """回傳 (總數, 待辦數, 完成數)。"""

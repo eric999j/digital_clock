@@ -60,3 +60,9 @@ class Events:
 
     # 系統快捷鍵事件
     SCREENSHOT_TRIGGERED = 'screenshot_triggered'
+
+    # 跨模組狀態與統一通知中心
+    APP_STATE_CHANGED = 'app_state_changed'
+    NOTIFICATION_ADDED = 'notification_added'
+    NOTIFICATIONS_CHANGED = 'notifications_changed'
+    OPEN_NOTIFICATION_CENTER = 'open_notification_center'
