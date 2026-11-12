@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from core.events import Events
+from core.file_security import restrict_to_owner
 from core.todo_commands import (
     AddTaskCommand,
     CommandHistory,
@@ -20,7 +21,6 @@ from core.todo_commands import (
     UpdateTaskCommand,
     iter_subtree,
 )
-from core.file_security import restrict_to_owner
 from core.todo_filter import TodoFilter
 from core.todo_task import PRIORITIES, PRIORITY_NORMAL, TodoTask
 from services.config_service import ConfigManager

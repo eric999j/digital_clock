@@ -5,7 +5,6 @@ import tkinter as tk
 import webbrowser
 from collections.abc import Callable, Sequence
 from datetime import date, timedelta
-from pathlib import Path
 from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 from typing import Any
