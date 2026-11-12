@@ -99,6 +99,7 @@ class ConfigManager:
                 }
             },
             "themes": {
+                "olive_green": {"bg": "#232120", "fg": "#E7EF05", "name": "橄欖綠"},
                 "green": {"bg": "#C7EDCC", "fg": "#2F4F2F", "name": "護眼綠"},
                 "blue": {"bg": "#1E3A5F", "fg": "#A8D8FF", "name": "紳士藍"},
                 "dusk": {"bg": "#2C3E50", "fg": "#BDC3C7", "name": "暮色灰"},
