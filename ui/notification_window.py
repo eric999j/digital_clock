@@ -18,6 +18,7 @@ _HEADER_BG = BUTTON_HOVER_BG
 _HEADER_FG = BUTTON_FG
 _HEADER_GAP = BUTTON_PRESSED_BG
 _MAIN_COLUMN_MIN = 160
+_MAX_MESSAGE_CHARS = 500
 _EMPTY_TEXT = "目前沒有通知"
 # (欄位 key, 表頭, 寬度)；內容欄為 #0 並隨視窗伸縮
 _COLUMN_SPECS = (('title', "標題", 110), ('source', "來源", 70), ('time', "時間", 120))
@@ -63,33 +64,69 @@ class NotificationWindow(tk.Toplevel):
         table.pack(fill=tk.BOTH, expand=True)
 
         # 表頭自繪：Windows 預設的 vista 主題會忽略 Treeview.Heading 的背景與文字色
-        self._header = tk.Frame(table, bg=_HEADER_GAP)
-        self._header.pack(fill=tk.X, side=tk.TOP)
         self._header_font = tkfont.Font(root=self, font=tkfont.nametofont('TkDefaultFont'), weight='bold')
-        self._header.columnconfigure(0, weight=1, minsize=_MAIN_COLUMN_MIN)
+        v_scroll = ttk.Scrollbar(table, orient=tk.VERTICAL)
+        h_scroll = ttk.Scrollbar(table, orient=tk.HORIZONTAL)
+        # 表頭放在裁切容器內，隨水平捲動位移；右側留出垂直捲軸寬度以對齊欄位
+        self._header_holder = tk.Frame(table, bg=_HEADER_GAP, height=self._header_font.metrics('linespace') + 12)
+        self._header_holder.pack(fill=tk.X, side=tk.TOP, padx=(0, v_scroll.winfo_reqwidth()))
+        self._header_holder.pack_propagate(False)
+        self._header = tk.Frame(self._header_holder, bg=_HEADER_GAP)
+        self._header_labels: list[tk.Label] = []
         for index, text in enumerate(("內容", *(spec[1] for spec in _COLUMN_SPECS))):
-            tk.Label(
+            label = tk.Label(
                 self._header, text=text, bg=_HEADER_BG, fg=_HEADER_FG, font=self._header_font,
                 anchor='w' if index == 0 else 'center', padx=8, pady=4,
-            ).grid(row=0, column=index, sticky='nsew', padx=(0, 1), pady=(0, 1))
-        for index, (_name, _text, width) in enumerate(_COLUMN_SPECS, start=1):
-            self._header.columnconfigure(index, minsize=width, weight=0)
+            )
+            label.grid(row=0, column=index, sticky='nsew', padx=(0, 1), pady=(0, 1))
+            self._header_labels.append(label)
 
         self.tree = ttk.Treeview(
             table, columns=[spec[0] for spec in _COLUMN_SPECS], show='tree', selectmode='browse',
             style=f'{p}.Treeview',
         )
-        self.tree.column('#0', width=330, minwidth=_MAIN_COLUMN_MIN, stretch=True)
+        self._total_width = 0
+        self.tree.column('#0', width=330, minwidth=_MAIN_COLUMN_MIN, stretch=False)
         for name, _text, width in _COLUMN_SPECS:
             self.tree.column(name, width=width, minwidth=width, stretch=False, anchor='center')
-        scrollbar = ttk.Scrollbar(table, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        # 表頭右側留出捲軸寬度，讓欄位與清單對齊
-        self._header.columnconfigure(len(_COLUMN_SPECS) + 1, minsize=scrollbar.winfo_reqwidth(), weight=0)
-        tk.Frame(self._header, bg=_HEADER_GAP).grid(row=0, column=len(_COLUMN_SPECS) + 1, sticky='nsew')
+        v_scroll.configure(command=self.tree.yview)
+        h_scroll.configure(command=self.tree.xview)
+        self.tree.configure(yscrollcommand=v_scroll.set,
+                            xscrollcommand=lambda first, last: self._on_xscroll(h_scroll, first, last))
+        h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.tree.bind('<Configure>', lambda _e: self._layout_columns())
         self._empty_label = tk.Label(self.tree, text=_EMPTY_TEXT, justify=tk.CENTER)
+
+    @staticmethod
+    def _clean_message(message: object) -> str:
+        """將內容正規化為單行並限制長度，避免換行、控制字元或超長文字破壞版面。"""
+        text = "" if message is None else str(message)
+        text = " ".join(text.split())
+        if len(text) > _MAX_MESSAGE_CHARS:
+            text = text[:_MAX_MESSAGE_CHARS] + "…"
+        return text or "（無內容）"
+
+    def _layout_columns(self) -> None:
+        """內容欄寬度依最長文字與視窗寬度決定，固定欄位維持原寬，超出部分靠水平捲軸查看。"""
+        fixed = sum(spec[2] for spec in _COLUMN_SPECS)
+        font = tkfont.nametofont('TkDefaultFont')
+        longest = max((font.measure(self.tree.item(i, 'text')) for i in self.tree.get_children()), default=0)
+        available = max(self.tree.winfo_width() - fixed, _MAIN_COLUMN_MIN)
+        main = max(_MAIN_COLUMN_MIN, available, longest + 40)
+        self.tree.column('#0', width=main)
+        self._total_width = main + fixed
+        self._header.grid_columnconfigure(0, minsize=main)
+        for index, (_n, _t, width) in enumerate(_COLUMN_SPECS, start=1):
+            self._header.grid_columnconfigure(index, minsize=width)
+        self._header.place(x=-int(self.tree.xview()[0] * self._total_width), y=0,
+                           width=self._total_width, relheight=1)
+
+    def _on_xscroll(self, scrollbar: ttk.Scrollbar, first: str, last: str) -> None:
+        scrollbar.set(first, last)
+        self._header.place(x=-int(float(first) * self._total_width), y=0,
+                           width=self._total_width, relheight=1)
 
     def apply_theme(self, theme: dict[str, str]) -> None:
         """套用時鐘主題配色並重繪。"""
@@ -118,10 +155,12 @@ class NotificationWindow(tk.Toplevel):
         items = self.center.items()
         for item in items:
             self.tree.insert(
-                '', tk.END, iid=str(item.id), text=item.message,
-                values=(item.title, item.source_label, item.timestamp.strftime('%m/%d %H:%M:%S')),
+                '', tk.END, iid=str(item.id), text=self._clean_message(item.message),
+                values=(self._clean_message(item.title), item.source_label,
+                        item.timestamp.strftime('%m/%d %H:%M:%S')),
                 tags=() if item.read else ('unread',),
             )
+        self._layout_columns()
         unread = self.center.unread_count()
         self._status.config(text=f"共 {len(items)} 則，未讀 {unread} 則" if items else "")
         if items:

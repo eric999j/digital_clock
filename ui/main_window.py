@@ -888,11 +888,18 @@ class DigitalClock(Observer):
             self.context_menu.pomodoro_menu.update_menu()
             self.context_menu.refresh_todo_menu()
             self.context_menu.refresh_notification_menu()
+            # 暫時取消時鐘置頂，避免子選單（如勿擾模式）被時鐘本體遮擋
+            self.root.attributes('-topmost', False)
             self.context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
             logger.error("Error showing context menu: %s", e)
         finally:
             self.context_menu.grab_release()
+            try:
+                if not self.logic.is_hidden:
+                    self.root.attributes('-topmost', True)
+            except tk.TclError:
+                pass
             self._context_menu_open = False
             # 選單開啟期間被延後的資訊列變更，在此補套用
             self._refresh_info_lines()
