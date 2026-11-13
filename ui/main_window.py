@@ -141,6 +141,7 @@ class DigitalClock(Observer):
             self.update_time()
             self.root.attributes('-alpha', self.config['window']['alpha_focused'])
             self.enforce_topmost()
+            self.root.after(5000, self._ensure_visible)
         except Exception as e:
             messagebox.showerror("初始化錯誤", f"無法啟動時鐘：{e}")
             raise
@@ -1760,6 +1761,26 @@ class DigitalClock(Observer):
         if not self.logic.is_hidden:
             self.root.attributes('-topmost', True)
         self.root.after(3600000, self.enforce_topmost)
+
+    def _ensure_visible(self) -> None:
+        """定期確認時鐘仍可見。
+
+        遠端桌面連線／中斷會改變螢幕範圍或讓視窗失去置頂與顯示狀態，
+        此時重新夾回可視範圍、取消隱藏並恢復置頂。
+        """
+        try:
+            if not self.logic.is_hidden:
+                if self.root.state() in ('withdrawn', 'iconic'):
+                    self.root.deiconify()
+                x, y = self.root.winfo_x(), self.root.winfo_y()
+                nx, ny = self._clamp_window_position(
+                    x, y, self.root.winfo_width(), self.root.winfo_height())
+                if (nx, ny) != (x, y):
+                    self.root.geometry(f"+{nx}+{ny}")
+                self.root.attributes('-topmost', True)
+            self.root.after(5000, self._ensure_visible)
+        except tk.TclError:
+            logger.debug("Clock window destroyed; stop visibility watchdog")
 
     def update_time(self) -> None:
         """主更新循環，負責 UI 更新與秒級邏輯檢查。"""
