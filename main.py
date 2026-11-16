@@ -3,11 +3,12 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from services.config_service import ConfigManager
+from services.log_service import LogService
 from ui.dpi import enable_dpi_awareness
 from ui.main_window import DigitalClock
 
 
-def _configure_logging() -> None:
+def _configure_logging(config_manager: ConfigManager) -> None:
     """設定日誌：寫入 ~/.digital_clock/digital_clock.log，並啟用輪替。"""
     log_dir = Path.home() / '.digital_clock'
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -28,13 +29,17 @@ def _configure_logging() -> None:
         root_logger.removeHandler(handler)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(stream_handler)
+    try:
+        LogService(config_manager).clear_if_due()
+    except OSError:
+        logging.getLogger(__name__).exception("Unable to automatically clear the log file")
 
 
 if __name__ == '__main__':
-    _configure_logging()
+    config_manager = ConfigManager()
+    _configure_logging(config_manager)
     enable_dpi_awareness()  # 必須早於任何 tk.Tk()
 
-    config_manager = ConfigManager()
     clock = DigitalClock(config_manager)
     clock.run()
 

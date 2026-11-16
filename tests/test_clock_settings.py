@@ -50,6 +50,7 @@ class TestClockSettings(unittest.TestCase):
                 'alpha_focused': 1.0,
                 'alpha_unfocused': 0.5,
             },
+            'system': {'log_auto_clear_enabled': True},
         }
         self.ui.DATE_FORMATS = {'full': '%Y年%m月%d日 ', 'short': '%Y-%m-%d'}
         self.ui.logic = MagicMock()
@@ -59,6 +60,7 @@ class TestClockSettings(unittest.TestCase):
         self.ui.alpha_focused_var = MagicMock()
         self.ui.alpha_unfocused_var = MagicMock()
         self.ui.corner_radius_var = MagicMock()
+        self.ui.log_auto_clear_var = MagicMock()
 
     def test_date_format_is_stored_in_current_config(self) -> None:
         self.ui.change_date_format('short')
@@ -84,6 +86,14 @@ class TestClockSettings(unittest.TestCase):
         self.assertEqual(self.ui.config['appearance']['corner_radius'], 20)
         self.ui.corner_radius_var.set.assert_called_once_with(20)
         self.ui._redraw_background.assert_called_once()
+        self.ui.logic.schedule_save.assert_called_once_with(self.ui.config)
+
+    def test_log_auto_clear_setting_is_saved(self) -> None:
+        self.ui.log_auto_clear_var.get.return_value = False
+
+        self.ui.change_log_auto_clear()
+
+        self.assertFalse(self.ui.config['system']['log_auto_clear_enabled'])
         self.ui.logic.schedule_save.assert_called_once_with(self.ui.config)
 
     def test_consecutive_changes_save_all_current_values(self) -> None:

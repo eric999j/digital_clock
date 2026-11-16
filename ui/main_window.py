@@ -16,14 +16,17 @@ from core.observer import Observer
 from core.url_validator import is_safe_url
 from services.config_service import ConfigManager
 from services.countdown_service import CountdownService
+from services.log_service import LogService
 from ui.dpi import get_scale_factor, scale_px
 from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
-from ui.theme_utils import BUTTON_BG, BUTTON_FG, random_theme, themed_confirm, themed_error
+from ui.theme_utils import BUTTON_BG, BUTTON_FG, random_theme, themed_confirm, themed_error, themed_info
 from ui.window_bounds import clamp_position, get_screen_bounds
 
 logger = logging.getLogger(__name__)
+
+LOG_CLEANUP_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 
 
 class DigitalClock(Observer):
@@ -85,6 +88,9 @@ class DigitalClock(Observer):
         self.alpha_focused_var = tk.DoubleVar(value=self.config['window']['alpha_focused'])
         self.alpha_unfocused_var = tk.DoubleVar(value=self.config['window']['alpha_unfocused'])
         self.corner_radius_var = tk.IntVar(value=app_conf['corner_radius'])
+        self.log_auto_clear_var = tk.BooleanVar(
+            value=self.config.get('system', {}).get('log_auto_clear_enabled', True)
+        )
         self.drag_offset: dict[str, int] = {'x': 0, 'y': 0}
         # 當滑鼠移至時間標籤上方時，暫停時間更新並顯示日期
         self._hovering_time: bool = False
@@ -1098,9 +1104,42 @@ class DigitalClock(Observer):
         self._redraw_background()
         self._schedule_current_config_save()
 
+    def change_log_auto_clear(self) -> None:
+        """變更日誌每月自動清理設定。"""
+        self.config.setdefault('system', {})['log_auto_clear_enabled'] = self.log_auto_clear_var.get()
+        self._schedule_current_config_save()
+
+    def confirm_clear_log(self) -> None:
+        """確認後清空目前的應用程式日誌。"""
+        themed_confirm(
+            self.root, "確定要清空目前的日誌檔嗎？", self._clear_log,
+            self._get_current_theme(), title="清空日誌", yes_text="清空", no_text="取消",
+        )
+
+    def _clear_log(self) -> None:
+        """清空日誌並重設下一次自動清理的起算時間。"""
+        try:
+            LogService(self.logic.config_manager).clear_log()
+        except OSError as error:
+            themed_error(self.root, f"無法清空日誌：{error}", self._get_current_theme(), title="清理失敗")
+            return
+
+        system_config = self.config.setdefault('system', {})
+        system_config['log_last_cleared_at'] = datetime.now().isoformat(timespec='seconds')
+        self._schedule_current_config_save()
+        themed_info(self.root, "日誌已清空。", self._get_current_theme(), title="清理完成")
+
     def _schedule_current_config_save(self) -> None:
         """以目前記憶體設定排程儲存，保留連續調整的所有變更。"""
         self.logic.schedule_save(self.config)
+
+    def _check_log_cleanup(self) -> None:
+        """每日檢查日誌是否到達自動清理週期。"""
+        try:
+            LogService(self.logic.config_manager).clear_if_due()
+        except OSError:
+            logger.exception("Unable to automatically clear the log file")
+        self.root.after(LOG_CLEANUP_CHECK_INTERVAL_MS, self._check_log_cleanup)
 
     def apply_random_theme(self) -> None:
         """依內建配色產生並套用新的隨機配色。"""
@@ -1836,4 +1875,5 @@ class DigitalClock(Observer):
 
     def run(self) -> None:
         """啟動 tkinter 主迴圈。"""
+        self.root.after(LOG_CLEANUP_CHECK_INTERVAL_MS, self._check_log_cleanup)
         self.root.mainloop()

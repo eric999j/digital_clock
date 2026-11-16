@@ -92,6 +92,8 @@ class ConfigManager:
                     "enabled": False,
                     "log_interval_sec": 60
                 },
+                "log_auto_clear_enabled": True,
+                "log_last_cleared_at": None,
                 "key_map": {
                     "cmd": "win",
                     "shift": "shift",

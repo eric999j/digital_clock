@@ -39,6 +39,8 @@ class TestConfigManager(unittest.TestCase):
         self.assertIn('system', config)
         self.assertIn('performance_monitor', config['system'])
         self.assertFalse(config['system']['performance_monitor']['enabled'])
+        self.assertTrue(config['system']['log_auto_clear_enabled'])
+        self.assertIsNone(config['system']['log_last_cleared_at'])
         self.assertEqual(config['version'], "1.0")
 
     def test_todo_defaults(self):

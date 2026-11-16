@@ -272,5 +272,16 @@ class ContextMenu(Menu):
                 command=lambda selected_radius=radius: self.ui.change_corner_radius(selected_radius),
             )
         clock_settings_menu.add_cascade(label="圓角", menu=corner_radius_menu)
+        clock_settings_menu.add_separator()
+
+        # 日誌清理
+        log_menu = Menu(clock_settings_menu, tearoff=0)
+        log_menu.add_checkbutton(
+            label="每月自動清除",
+            variable=self.ui.log_auto_clear_var,
+            command=self.ui.change_log_auto_clear,
+        )
+        log_menu.add_command(label="立即清空日誌…", command=self.ui.confirm_clear_log)
+        clock_settings_menu.add_cascade(label="日誌清理", menu=log_menu)
 
         self.add_cascade(label="時鐘設定", menu=clock_settings_menu)
