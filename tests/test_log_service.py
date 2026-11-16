@@ -1,7 +1,7 @@
 import logging
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from unittest.mock import patch
