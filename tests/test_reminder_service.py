@@ -80,6 +80,26 @@ class TestReminderService(unittest.TestCase):
         self.assertEqual(len(self.config_data['reminders']), 0)
         self.mock_config_mgr.save_config.assert_called()
 
+    def test_one_time_reminder_is_persisted_before_due_notification(self):
+        reminder = {
+            "datetime": "2025-12-25 10:00:00",
+            "message": "Due",
+            "weekdays": [],
+        }
+        self.config_data['reminders'] = [reminder]
+        self.service.strategy = MagicMock()
+        self.service.strategy.check.return_value = ([reminder], "")
+
+        def assert_removed(*_args):
+            self.mock_config_mgr.save_config.assert_called_once_with(self.config_data)
+            self.assertNotIn(reminder, self.config_data['reminders'])
+
+        self.mock_notify.side_effect = assert_removed
+
+        self.service.check_reminders(is_paused=False)
+
+        self.mock_notify.assert_called_once()
+
     def test_check_reminders_uses_provided_config_without_load(self):
         self.service.strategy = MagicMock()
         provided_config = {

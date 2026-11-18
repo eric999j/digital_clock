@@ -156,18 +156,15 @@ class ReminderService:
             last_minute_key=self._last_weekly_minute_key,
         )
 
-        reminders_to_delete = []
-        for reminder in triggered_reminders:
-            self.notify(Events.REMINDER_DUE, reminder)
-            # 只刪除單次提醒
-            if not reminder.get('weekdays'):
-                reminders_to_delete.append(reminder)
-
+        reminders_to_delete = [reminder for reminder in triggered_reminders if not reminder.get('weekdays')]
         if reminders_to_delete:
             for reminder in reminders_to_delete:
                 if reminder in config_data.get('reminders', []):
                     config_data['reminders'].remove(reminder)
             self._save_config(config_data)
+
+        for reminder in triggered_reminders:
+            self.notify(Events.REMINDER_DUE, reminder)
 
     def remove_expired_reminders(self) -> None:
         """移除過期提醒。"""

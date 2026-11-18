@@ -93,6 +93,7 @@ class TestMainWindowHandlers(unittest.TestCase):
             'window': {'width': 200, 'height': 70, 'x': 10, 'y': 10},
             'reminders': [],
             'timezones': {'selected': []},
+            'todo': {'remind_enabled': True},
         }
         ui.TIME_FORMATS = {'24h': '%H:%M', '12h': '%I:%M %p'}
         ui.logic = MagicMock()
@@ -113,6 +114,45 @@ class TestMainWindowHandlers(unittest.TestCase):
         self.assertEqual(ui.config['reminders'], [{'title': 'snoozed'}])
         self.assertEqual(ui.config['appearance']['theme'], 'caramel')
         ui._update_reminder_menu.assert_called_once()
+
+    def test_due_reminder_syncs_removed_one_time_reminder(self):
+        ui = self._make_ui()
+        ui.config['reminders'] = [{'title': 'already due'}]
+        ui.logic.get_config.return_value = {'reminders': []}
+        ui.logic.get_snooze_options.return_value = (5, 10)
+        ui._reminder_popups = []
+        ui._get_current_theme = MagicMock(return_value={'bg': '#000', 'fg': '#fff'})
+
+        with patch('ui.popup_utils.show_reminder_popup_window', return_value=None):
+            ui._on_reminder_due({'title': 'already due', 'message': 'due', 'weekdays': []})
+
+        self.assertEqual(ui.config['reminders'], [])
+
+    def test_pause_toggle_syncs_service_owned_pause_state(self):
+        ui = self._make_ui()
+        ui.config['reminder_paused'] = False
+        ui.config['pause_sources'] = {'reminder': [], 'hourly_web': []}
+        ui.config['hourly_web_reminder'] = {'paused': False}
+        ui.logic.get_config.return_value = {
+            'reminder_paused': True,
+            'pause_sources': {'reminder': ['manual'], 'hourly_web': []},
+            'vacation_sources': [],
+            'on_vacation': False,
+            'hourly_web_reminder': {'paused': False},
+        }
+        ui.reminder_menu = MagicMock()
+
+        ui._on_reminder_pause_toggled(True)
+
+        self.assertTrue(ui.config['reminder_paused'])
+        self.assertEqual(ui.config['pause_sources']['reminder'], ['manual'])
+
+    def test_todo_remind_toggle_updates_stale_ui_config(self):
+        ui = self._make_ui()
+
+        ui._on_todo_remind_toggled(False)
+
+        self.assertFalse(ui.config['todo']['remind_enabled'])
 
     def test_timezones_updated_syncs_only_timezones_and_refreshes(self):
         ui = self._make_ui()

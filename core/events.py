@@ -36,6 +36,7 @@ class Events:
     # 待辦事項事件
     TODO_UPDATED = 'todo_updated'
     TODO_DUE = 'todo_due'
+    TODO_REMIND_TOGGLED = 'todo_remind_toggled'
 
     # 休假模式事件
     VACATION_TOGGLED = 'vacation_toggled'

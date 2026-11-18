@@ -191,6 +191,7 @@ class DigitalClock(Observer):
             Events.NOTIFICATIONS_CHANGED: self._on_notifications_changed,
             Events.TODO_UPDATED: self._on_todo_updated,
             Events.TODO_DUE: self._on_todo_due,
+            Events.TODO_REMIND_TOGGLED: self._on_todo_remind_toggled,
             Events.CALENDAR_EVENT_UPCOMING: self._on_calendar_event_upcoming,
             Events.CALENDAR_EVENT_STARTED: self._on_calendar_event_started,
             Events.CALENDAR_EVENT_ENDED: self._on_calendar_event_ended,
@@ -234,6 +235,7 @@ class DigitalClock(Observer):
     def _on_reminder_due(self, reminder: dict[str, Any], *args) -> None:
         from ui.popup_utils import show_reminder_popup_window
 
+        self.config['reminders'] = self.logic.get_config().get('reminders', [])
         # 訊息為空時改用標題
         display_text = reminder.get('message') or reminder.get('title', '') or '提醒時間到了'
         reminder_title = reminder.get('title') or '提醒'
@@ -336,14 +338,17 @@ class DigitalClock(Observer):
         ))
 
     def _on_reminder_added(self, *args) -> None:
+        self.config['reminders'] = self.logic.get_config().get('reminders', [])
         self._show_themed_info("提醒已設定成功！")
         self._update_reminder_menu()
 
     def _on_reminder_updated(self, *args) -> None:
+        self.config['reminders'] = self.logic.get_config().get('reminders', [])
         self._show_themed_info("提醒已更新！")
         self._update_reminder_menu()
 
     def _on_reminder_deleted(self, *args) -> None:
+        self.config['reminders'] = self.logic.get_config().get('reminders', [])
         self._show_themed_info("提醒已刪除。")
         self._update_reminder_menu()
 
@@ -356,6 +361,7 @@ class DigitalClock(Observer):
         self._show_themed_info("整點啟動設定已更新！")
 
     def _on_hourly_web_pause_toggled(self, is_paused: bool, *args) -> None:
+        self._sync_pause_config()
         label = "啟動" if is_paused else "暫停"
         try:
             self.hourly_web_menu.entryconfigure(1, label=label)
@@ -363,11 +369,25 @@ class DigitalClock(Observer):
             logger.warning("Error updating hourly web menu: %s", e)
 
     def _on_reminder_pause_toggled(self, is_paused: bool, *args) -> None:
+        self._sync_pause_config()
         label = "啟動" if is_paused else "暫停"
         try:
             self.reminder_menu.entryconfigure(1, label=label)
         except Exception as e:
             logger.warning("Error updating reminder menu: %s", e)
+
+    def _sync_pause_config(self) -> None:
+        """同步服務直接儲存的暫停狀態，避免延遲設定回寫將其復原。"""
+        fresh = self.logic.get_config()
+        for key in (
+            'pause_sources', 'vacation_sources', 'reminder_paused',
+            'on_vacation', 'on_vacation_source', 'vacation_previous_state',
+        ):
+            if key in fresh:
+                self.config[key] = fresh[key]
+            else:
+                self.config.pop(key, None)
+        self.config['hourly_web_reminder'] = fresh.get('hourly_web_reminder', {})
 
     def _on_vacation_toggled(self, is_vacation: bool, *args) -> None:
         # 自動休假（排程／行事曆）不經 UI，需同步休假相關欄位，避免之後的延遲儲存以舊值覆蓋
@@ -503,6 +523,10 @@ class DigitalClock(Observer):
         """待辦變更：更新資訊列的未完成數。"""
         self._todo_pending = pending if isinstance(pending, int) else self.logic.todo_service.pending_count()
         self._refresh_info_lines()
+
+    def _on_todo_remind_toggled(self, enabled: bool, *args) -> None:
+        """同步待辦提醒開關，避免視窗關閉時被舊設定覆寫。"""
+        self.config.setdefault('todo', {})['remind_enabled'] = bool(enabled)
 
     def _on_todo_due(self, items: list[dict[str, Any]], *args) -> None:
         """整點提醒今日到期與逾期的待辦。"""

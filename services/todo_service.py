@@ -337,6 +337,7 @@ class TodoService:
         config = self.config_manager.load_config()
         config.setdefault('todo', {})['remind_enabled'] = bool(enabled)
         self.config_manager.save_config(config)
+        self.notify(Events.TODO_REMIND_TOGGLED, bool(enabled))
 
     def check(self, now: datetime | None = None, config: dict[str, Any] | None = None) -> None:
         """整點時提醒今日到期／逾期的待辦；勿擾或整點啟動暫停時略過。"""
