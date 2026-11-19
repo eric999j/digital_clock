@@ -12,9 +12,36 @@ python -m ruff check .
 - 部分 UI 測試需要可用的顯示器，無顯示器時會自動略過。
 - 更多開發約定見 [AGENTS.md](../AGENTS.md)。
 
+## 目前架構邊界
+
+### UI 層
+
+- `ui/main_window.py`：Tkinter 組裝 façade、Observer 事件入口、主要互動與設定命令。
+- `ui/clock_renderer.py`：Canvas 時鐘文字、動畫、字元快取與圓角背景。
+- `ui/info_band_presenter.py`：番茄鐘、倒數、待辦、多時區資訊列的組合與繪製。
+- `ui/window_controller.py`：功能視窗建立與單例帶回。
+- `ui/event_router.py`：事件名稱至 `DigitalClock` handler 的集中映射。
+
+### Core 與 Service 層
+
+- `ClockLogic` 為 Composition Root / Mediator，建立 Service 並統一關閉生命週期。
+- `typed_events.py` 提供型別化事件封包；既有 Observer 呼叫仍相容。
+- `ConfigStore` 提供 `ConfigSnapshot`、`WindowConfig`、`AppearanceConfig`。
+- `ConfigManager` 保存記憶體快取與檔案版本；所有設定儲存進入 `ConfigWriter` 的單一背景佇列。
+- `pomodoro_service.py` 使用 `PomodoroStrategy` 決定下一階段，避免測試與執行規則分離。
+
+### 修改慣例
+
+- UI 繪圖邏輯優先放在 Presenter/Renderer，不再持續增加 `DigitalClock` 的畫布細節。
+- 新 Service 以 callback 發事件，不直接操作 Tk。
+- 事件名稱仍集中於 `Events`；新 payload 可使用 `TypedEvent`。
+- 設定寫入使用 `persist_config()` 或 `ClockLogic.schedule_save()`，不要建立另一條直接背景寫入路徑。
+- Thread 產生的結果必須透過 `root.after()` 回到 Tk 主執行緒。
+
 ## 設定與資料檔版本
 
 - `config.json`：整數 `schema_version`（目前為 1）。載入時缺欄位視為 0，依 `services/config_service.py` 的 `_MIGRATIONS` 逐版升級；舊 `version: "1.0"` 欄位保留相容。檔案版本高於程式支援時只記錄警告，不降級。
+- 設定記憶體快取由 `RLock` 保護；UI 延遲儲存與 Service 即時儲存共用同一個 `ConfigWriter`，避免 temp file 與完整快照互相競爭。
 - `todos.json`：`version`（目前為 1）。檔案版本高於程式支援時，載入顯示提示且拒絕覆寫，避免降級後遺失資料。
 - 設定結構有不相容變更時：遞增 `CONFIG_SCHEMA_VERSION`，並新增對應的 migration 函式與測試。
 

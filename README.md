@@ -3,10 +3,20 @@
 ![示範](docs/assets/demo.gif)
 
 ## 緣起
-當應用程式最大化時，自動隱藏的工具列雖然釋放了螢幕空間，卻也讓我們無法隨時看到時間。此專案旨在解決這個問題，提供一個簡潔、不干擾且永遠在最上層的桌面時鐘，並整合番茄鐘、倒數計時、提醒、整點啟動、待辦事項等小工具。
+當應用程式最大化時，自動隱藏的工具列雖然釋放了螢幕空間，卻也讓我們無法隨時看到時間。此專案旨在解決這個問題，提供一個簡潔、不干擾且永遠在最上層的桌面時鐘，並整合番茄鐘、倒數計時、提醒、整點啟動、待辦事項、通知中心與行事曆勿擾等小工具。
 
 - 環境：Python 3.13+（tkinter）
 - 依賴（皆列於 `requirements.txt`）：`pynput`（全域鍵盤監聽）；`tkinterdnd2`（選用，整點啟動視窗拖入 XML 匯入，未安裝時改用按鈕匯入）；`icalendar` + `recurring-ical-events`（Outlook 行事曆 ICS 同步，缺少時停用該功能）；Windows 另需 `tzdata`（多時區）
+- 架構：Tkinter UI、Observer/Mediator、Service、Strategy、Command；設定透過 `ConfigStore` 提供型別化快照，磁碟寫入由單一背景 writer 排程。
+
+## 架構重點
+
+- `main.py` 僅負責日誌、DPI、設定管理器與應用程式組裝。
+- `ClockLogic` 是 Mediator 與 Composition Root，協調服務並透過事件通知 UI。
+- `DigitalClock` 是 Tkinter façade；Canvas 渲染與資訊列分別由 `ClockRenderer`、`InfoBandPresenter` 處理。
+- `strategies/` 提供可替換的時間與階段判斷；`PomodoroService` 已實際使用 `PomodoroStrategy`。
+- 設定寫入統一排入背景佇列，Service 與 UI 不再各自對同一個 JSON 競爭寫入；關閉時會同步 flush。
+- 重要事件支援型別化封包，同時保留既有 `event, *args, **kwargs` Observer 相容介面。
 
 ---
 
@@ -33,7 +43,7 @@ python main.py
 
 - [功能說明](docs/features.md)：完整功能清單與穩定性設計
 - [使用手冊](docs/usage.md)：右鍵選單、自訂 BAT 啟動、正式打包
-- [架構設計](docs/architecture.md)：分層架構、目錄結構、設計模式、程式碼慣例
+- [架構設計](docs/architecture.md)：分層架構、生命週期、資料流、目錄結構與設計模式
 - [開發指南](docs/development.md)：測試、CI、授權與第三方套件
 
 ---

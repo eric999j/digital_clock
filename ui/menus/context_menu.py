@@ -95,17 +95,21 @@ class ContextMenu(Menu):
         window = getattr(self, '_theme_window', None)
         if window is None or not window.winfo_exists():
             return
-        self._theme_keys = [key for key in self.ui.config['themes'] if key != '__random__'] + ['__random__']
+        self._theme_keys = [
+            key for key in self.ui.config['themes'] if key != '__random__'
+        ]
         self._theme_list.delete(0, tk.END)
         for key in self._theme_keys:
-            label = '隨機配色' if key == '__random__' else self.ui.config['themes'][key]['name']
-            self._theme_list.insert(tk.END, label)
+            self._theme_list.insert(tk.END, self.ui.config['themes'][key]['name'])
         current = self.ui.config['appearance']['theme']
         if current in self._theme_keys:
             self._theme_list.selection_set(self._theme_keys.index(current))
         theme = self.ui._get_current_theme()
         if theme:
             window.configure(bg=theme['bg'])
+            self._theme_button_bar.configure(bg=theme['bg'])
+            for button in (self._save_theme_button, self._random_theme_button):
+                button.configure(bg=theme['bg'], fg=theme['fg'])
             self._theme_list.configure(bg=theme['bg'], fg=theme['fg'],
                                        selectbackground=theme['fg'], selectforeground=theme['bg'])
 
@@ -123,8 +127,24 @@ class ContextMenu(Menu):
         self._theme_list = tk.Listbox(self._theme_window, exportselection=False, height=10, width=28)
         scrollbar = tk.Scrollbar(self._theme_window, command=self._theme_list.yview)
         self._theme_list.configure(yscrollcommand=scrollbar.set)
-        tk.Button(self._theme_window, text='儲存目前配色…', bg=BUTTON_BG, fg=BUTTON_FG,
-                  command=self.ui.save_current_theme).pack(side=tk.BOTTOM, pady=6)
+        self._theme_button_bar = tk.Frame(self._theme_window)
+        self._theme_button_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=6, pady=6)
+        self._save_theme_button = tk.Button(
+            self._theme_button_bar,
+            text='儲存目前配色…',
+            bg=BUTTON_BG,
+            fg=BUTTON_FG,
+            command=self.ui.save_current_theme,
+        )
+        self._save_theme_button.pack(side=tk.LEFT)
+        self._random_theme_button = tk.Button(
+            self._theme_button_bar,
+            text='隨機配色',
+            bg=BUTTON_BG,
+            fg=BUTTON_FG,
+            command=self.ui.apply_random_theme,
+        )
+        self._random_theme_button.pack(side=tk.LEFT, padx=(6, 0))
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self._theme_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0), pady=6)
         self._theme_list.bind('<ButtonRelease-1>', self._on_theme_left_click)
@@ -151,9 +171,7 @@ class ContextMenu(Menu):
             self._select_theme(self._theme_keys[selection[0]])
 
     def _select_theme(self, key: str | None) -> None:
-        if key == '__random__':
-            self.ui.apply_random_theme()
-        elif key is not None:
+        if key is not None:
             self.ui.apply_theme(key)
         self.refresh_theme_menu()
 

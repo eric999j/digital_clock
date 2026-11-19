@@ -86,20 +86,19 @@ class TestContextMenuIntegration(unittest.TestCase):
         self.assertEqual(self._labels(settings)[:2], ["多時區", "---"])
         self.assertIs(settings.nametowidget(settings.entrycget(0, "menu")), menu.timezone_menu)
 
-    def test_random_theme_is_last_and_saved_theme_is_selectable(self):
+    def test_random_theme_button_and_saved_theme_are_selectable(self):
         clock = self.clock
         menu = clock.context_menu
         original = clock.config['appearance']['theme']
         try:
             menu.open_theme_menu()
-            self.assertEqual(menu._theme_list.get(tk.END), '隨機配色')
-            menu._select_theme('__random__')
+            self.assertNotIn('隨機配色', menu._theme_list.get(0, tk.END))
+            menu._random_theme_button.invoke()
             generated = dict(clock._get_current_theme())
             self.assertEqual(clock.config['appearance']['theme'], '__random__')
             clock._save_named_theme('測試收藏', generated)
             key = clock.config['appearance']['theme']
             self.assertIn('測試收藏', menu._theme_list.get(0, tk.END))
-            self.assertEqual(menu._theme_list.get(tk.END), '隨機配色')
             menu._select_theme(key)
             self.assertEqual(clock._get_current_theme()['bg'], generated['bg'])
             self.assertEqual(clock.config['appearance']['theme'], key)
@@ -107,7 +106,7 @@ class TestContextMenuIntegration(unittest.TestCase):
             reloaded = ConfigManager().load_config()
             self.assertEqual(reloaded['appearance']['theme'], key)
             self.assertEqual(reloaded['themes'][key], clock.config['themes'][key])
-            menu._select_theme('__random__')
+            menu._random_theme_button.invoke()
             self.assertEqual(clock.config['themes'][key]['bg'], generated['bg'])
         finally:
             clock.apply_theme(original, save=False)
@@ -191,7 +190,7 @@ class TestContextMenuIntegration(unittest.TestCase):
             loaded = ConfigManager().load_config()
             self.assertNotIn(custom_key, loaded['themes'])
             self.assertNotIn('__random__', loaded['themes'])
-            self.assertEqual(menu._theme_list.get(tk.END), '隨機配色')
+            self.assertNotIn('隨機配色', menu._theme_list.get(0, tk.END))
         finally:
             clock.config['themes'] = original_themes
             clock.apply_theme(original_theme, save=False)

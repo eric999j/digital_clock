@@ -1,6 +1,6 @@
 # 架構設計
 
-分層設計，UI 與業務邏輯透過 **Observer** 解耦：UI 呼叫 `ClockLogic`，`ClockLogic` 以事件通知 UI。所有 UI 操作都在 tkinter 主執行緒。
+分層設計，UI 與業務邏輯透過 **Observer** 解耦：UI 呼叫 `ClockLogic`，`ClockLogic` 以事件通知 UI。所有 UI 操作都在 tkinter 主執行緒；設定 I/O 則由單一背景 writer 執行。
 
 ```mermaid
 flowchart TB
@@ -9,6 +9,8 @@ flowchart TB
     subgraph UI_Layer["UI 層 (ui/)"]
         direction LR
         WINDOW["main_window.py<br/>DigitalClock (Observer)"]
+        RENDER["clock_renderer.py<br/>Canvas 渲染"]
+        INFO["info_band_presenter.py<br/>資訊列 Presenter"]
         MENUS["menus/<br/>右鍵選單"]
         DIALOGS["設定視窗與彈窗<br/>reminder / hourly_web / vacation / calendar_sync / countdown / todo / popup_utils"]
     end
@@ -16,7 +18,7 @@ flowchart TB
     subgraph Core_Layer["核心層 (core/)"]
         direction LR
         LOGIC["clock_logic.py<br/>ClockLogic (Mediator)"]
-        EVT["events.py<br/>事件常數"]
+        EVT["events.py / typed_events.py<br/>事件名稱與型別封包"]
         OBS["observer.py<br/>Observer 介面"]
         TODOCORE["todo_task / todo_filter / todo_commands<br/>待辦模型、篩選、Command"]
     end
@@ -26,7 +28,8 @@ flowchart TB
         POMO["pomodoro / countdown"]
         REMS["reminder / hourly_web / todo / vacation_schedule / calendar_sync"]
         MISC["pause_manager / timezone / keyboard"]
-        CFG["config_service<br/>ConfigManager"]
+        CFG["config_service / config_store<br/>設定快取與型別快照"]
+        WRITER["config_writer<br/>單一背景寫入佇列"]
     end
 
     STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 待辦到期 / 番茄鐘 / 勿擾排程 / 行事曆"]
@@ -34,6 +37,8 @@ flowchart TB
     MAIN --> WINDOW
     WINDOW --> MENUS
     WINDOW --> DIALOGS
+    WINDOW --> RENDER
+    WINDOW --> INFO
     WINDOW -->|呼叫| LOGIC
     LOGIC -.->|事件通知| WINDOW
     LOGIC --> POMO
@@ -42,6 +47,7 @@ flowchart TB
     REMS --> STR
     REMS --> TODOCORE
     REMS --> CFG
+    CFG --> WRITER
 ```
 
 ## 目錄結構
@@ -52,6 +58,7 @@ digital_clock/
 ├── core/
 │   ├── clock_logic.py           # ClockLogic：協調各服務、事件通知、延遲儲存
 │   ├── events.py                # Events 事件名稱常數
+│   ├── typed_events.py          # 型別化事件封包；相容既有 Observer 呼叫
 │   ├── observer.py              # Observer 抽象介面
 │   ├── launch_rules.py          # 整點啟動規則共用邏輯
 │   ├── program_launcher.py      # 程式啟動（不經 shell、不等待）
@@ -63,6 +70,8 @@ digital_clock/
 │   └── url_validator.py         # URL 安全驗證（僅 http/https）
 ├── services/
 │   ├── config_service.py        # ConfigManager
+│   ├── config_store.py          # 型別化設定快照與設定寫入入口
+│   ├── config_writer.py         # 設定檔單一背景寫入佇列
 │   ├── pomodoro_service.py      # 番茄鐘引擎（含暫停）
 │   ├── countdown_service.py     # 倒數計時引擎
 │   ├── reminder_service.py      # 單次/週期提醒、稍後提醒
@@ -77,6 +86,8 @@ digital_clock/
 ├── strategies/                  # BaseStrategy 及各可替換演算法
 ├── ui/
 │   ├── main_window.py           # DigitalClock 主視窗
+│   ├── clock_renderer.py        # 時鐘 Canvas 渲染、動畫與字元快取
+│   ├── info_band_presenter.py   # 時鐘下方資訊列組合與繪製
 │   ├── popup_utils.py           # 主題化彈窗（含 Markdown 渲染）
 │   ├── theme_utils.py           # 色彩計算、ttk 樣式、設計 token
 │   ├── dpi.py                   # 高 DPI 支援
@@ -95,14 +106,18 @@ digital_clock/
 | 模式 | 位置 | 說明 |
 |------|------|------|
 | Observer | `core/observer.py` | `DigitalClock` 實作 `Observer`，訂閱 `ClockLogic` 以 `Events` 常數發出的事件 |
+| Typed Event | `core/typed_events.py` | 以不可變封包驗證常見 payload，同時轉回既有 `*args/**kwargs` 呼叫 |
 | Mediator | `core/clock_logic.py` | `ClockLogic` 協調各服務，服務透過 `notify_callback` 回報 |
-| Strategy | `strategies/` | 提醒、整點啟動、待辦到期、番茄鐘階段、勿擾排程、行事曆事件的判斷邏輯可替換，須繼承 `BaseStrategy` |
+| Strategy | `strategies/` | 提醒、整點啟動、待辦到期、番茄鐘階段、勿擾排程、行事曆事件的判斷邏輯可替換；`PomodoroService` 會實際呼叫 `PomodoroStrategy` |
 | Command | `core/todo_commands.py` | 待辦的每個操作都是可執行、可復原的 `TodoCommand`，由 `CommandHistory`（上限 50 步）記錄，`TodoService` 負責執行與存檔 |
+| Presenter / Renderer | `ui/info_band_presenter.py`、`ui/clock_renderer.py` | 將高頻 Canvas 組合與繪圖移出主視窗 façade |
 
 ## 程式碼慣例
 
 - 絕對 import；snake_case 方法、PascalCase 類別、UPPER_CASE 常數；完整 type hints；Google-style 繁體中文 docstring。
 - 事件名稱一律使用 `Events` 常數，不使用 magic string；日誌使用 `logging`，不使用 `print`。
 - 所有彈窗走 `popup_utils` / `theme_utils`（`themed_error`、`themed_confirm`），不直接使用 `tkinter.messagebox`，以確保主題一致。
+- UI 與 Service 設定寫入走 `persist_config()` / `ClockLogic.schedule_save()`；`ConfigManager` 將完整快照依序交給 `ConfigWriter`，關閉時 flush。
+- `DigitalClock` 保留組裝與相容 façade；新的繪圖與資訊列邏輯優先放入 Presenter/Renderer。
 
 更多開發約定見 [AGENTS.md](../AGENTS.md)。
