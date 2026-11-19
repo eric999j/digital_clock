@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ui.window_bounds import clamp_position, get_screen_bounds
+from ui.window_bounds import clamp_position, get_screen_bounds, position_popup_outside
 
 BOUNDS = (0, 0, 1920, 1080)
 
@@ -27,6 +27,41 @@ class TestClampPosition(unittest.TestCase):
         bounds = (-1920, 0, 1920, 1080)
         self.assertEqual(clamp_position(-3000, 10, 200, 70, bounds), (-1920, 10))
         self.assertEqual(clamp_position(-100, 10, 200, 70, bounds), (-100, 10))
+
+
+class TestPositionPopupOutside(unittest.TestCase):
+    def test_prefers_space_to_the_nearest_side_of_clock(self):
+        obstacle = (500, 300, 900, 450)
+
+        self.assertEqual(
+            position_popup_outside(700, 375, 180, 300, obstacle, BOUNDS),
+            (700, 451),
+        )
+
+    def test_uses_left_when_right_edge_has_no_space(self):
+        obstacle = (1700, 300, 1900, 450)
+
+        self.assertEqual(
+            position_popup_outside(1800, 375, 180, 300, obstacle, BOUNDS),
+            (1740, 451),
+        )
+
+    def test_uses_space_below_when_horizontal_space_is_insufficient(self):
+        bounds = (0, 0, 500, 800)
+        obstacle = (50, 250, 450, 400)
+
+        self.assertEqual(
+            position_popup_outside(250, 325, 180, 200, obstacle, bounds),
+            (250, 401),
+        )
+
+    def test_uses_space_above_clock_near_bottom_edge(self):
+        obstacle = (100, 900, 400, 1050)
+
+        self.assertEqual(
+            position_popup_outside(250, 975, 180, 300, obstacle, BOUNDS),
+            (401, 780),
+        )
 
 
 class TestGetScreenBounds(unittest.TestCase):

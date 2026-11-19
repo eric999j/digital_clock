@@ -59,7 +59,18 @@ class TestContextMenuIntegration(unittest.TestCase):
             clock._show_context_menu(event)
 
         log.error.assert_not_called()
-        popup.assert_called_once_with(100, 100)
+        popup.assert_called_once()
+        popup_x, popup_y = popup.call_args.args
+        menu_right = popup_x + clock.context_menu.winfo_reqwidth()
+        menu_bottom = popup_y + clock.context_menu.winfo_reqheight()
+        clock_right = clock.root.winfo_x() + clock.root.winfo_width()
+        clock_bottom = clock.root.winfo_y() + clock.root.winfo_height()
+        self.assertTrue(
+            menu_right <= clock.root.winfo_x()
+            or popup_x >= clock_right
+            or menu_bottom <= clock.root.winfo_y()
+            or popup_y >= clock_bottom
+        )
 
     def test_dynamic_submenus_are_exposed_as_attributes(self):
         menu = self.clock.context_menu

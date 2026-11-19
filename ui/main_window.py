@@ -22,7 +22,7 @@ from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
 from ui.theme_utils import BUTTON_BG, BUTTON_FG, random_theme, themed_confirm, themed_error, themed_info
-from ui.window_bounds import clamp_position, get_screen_bounds
+from ui.window_bounds import clamp_position, get_screen_bounds, position_popup_outside
 from ui.window_controller import WindowController
 
 logger = logging.getLogger(__name__)
@@ -790,9 +790,10 @@ class DigitalClock(Observer):
             self.context_menu.pomodoro_menu.update_menu()
             self.context_menu.refresh_todo_menu()
             self.context_menu.refresh_notification_menu()
+            popup_x, popup_y = self._context_menu_position(event.x_root, event.y_root)
             # 暫時取消時鐘置頂，避免子選單（如勿擾模式）被時鐘本體遮擋
             self.root.attributes('-topmost', False)
-            self.context_menu.tk_popup(event.x_root, event.y_root)
+            self.context_menu.tk_popup(popup_x, popup_y)
         except Exception as e:
             logger.error("Error showing context menu: %s", e)
         finally:
@@ -805,6 +806,31 @@ class DigitalClock(Observer):
             self._context_menu_open = False
             # 選單開啟期間被延後的資訊列變更，在此補套用
             self._refresh_info_lines()
+
+    def _context_menu_position(self, pointer_x: int, pointer_y: int) -> tuple[int, int]:
+        """
+        計算不與時鐘本體重疊的右鍵選單位置。
+
+        Args:
+            pointer_x: 指標螢幕座標 x
+            pointer_y: 指標螢幕座標 y
+
+        Returns:
+            選單左上角螢幕座標
+        """
+        menu_width = max(1, self.context_menu.winfo_reqwidth())
+        menu_height = max(1, self.context_menu.winfo_reqheight())
+        root_x, root_y = self.root.winfo_x(), self.root.winfo_y()
+        root_width = max(1, self.root.winfo_width())
+        root_height = max(1, self.root.winfo_height())
+        return position_popup_outside(
+            pointer_x,
+            pointer_y,
+            menu_width,
+            menu_height,
+            (root_x, root_y, root_x + root_width, root_y + root_height),
+            get_screen_bounds(self.root),
+        )
 
     def _adjust_window_width(self, font_family: str | None = None, is_initial: bool = False) -> None:
         """
