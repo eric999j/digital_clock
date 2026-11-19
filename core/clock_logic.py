@@ -1,6 +1,7 @@
 """時鐘業務邏輯管理，包括設定、提醒和鍵盤監聽。"""
 import copy
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -10,8 +11,10 @@ from core.app_state import AppState
 from core.check_coordinator import CheckCoordinator
 from core.events import Events
 from core.observer import Observer
+from core.typed_events import EventPublisher, TypedEvent, as_typed_event
 from services.calendar_sync_service import CalendarSyncService
 from services.config_service import ConfigManager
+from services.config_store import ConfigStore, persist_config
 from services.countdown_service import CountdownService
 from services.hourly_web_service import HourlyWebService
 from services.keyboard_service import KeyboardService
@@ -82,7 +85,8 @@ class ClockLogic:
         """
         self.ui = ui_controller
         self.config_manager = config_manager
-        self.config = self.config_manager.load_config() # 保持 config 屬性以相容部分舊代碼如果有的話，或給 get_config 使用
+        self.config_store = ConfigStore(config_manager)
+        self.config = self.config_store.mutable() # 相容舊 UI；型別化存取請使用 config_store
         self._save_delay_ms = self._resolve_save_delay_ms(self.config)
         self._save_after_id: str | None = None
         self._pending_config: dict[str, Any] | None = None
@@ -153,15 +157,22 @@ class ClockLogic:
         if observer in self._observers:
             self._observers.remove(observer)
 
-    def notify_observers(self, event: str, *args: Any, **kwargs: Any) -> None:
-        """通知所有觀察者事件發生。單一觀察者拋例外不影響其餘派發。"""
+    def notify_observers(
+        self,
+        event: str | TypedEvent,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        """驗證事件封包並通知觀察者；單一觀察者失敗不影響其餘派發。"""
+        typed = as_typed_event(event, *args, **kwargs)
+        event_name, event_args, event_kwargs = typed.legacy()
         for observer in self._observers:
             try:
-                observer.update(event, *args, **kwargs)
+                observer.update(event_name, *event_args, **event_kwargs)
             except Exception as e:
                 logger.error(
                     "Observer %s failed handling event %r: %s",
-                    type(observer).__name__, event, e,
+                    type(observer).__name__, event_name, e,
                 )
 
     def start(self) -> None:
@@ -180,11 +191,17 @@ class ClockLogic:
 
     def get_config(self) -> dict[str, Any]:
         """取得目前設定。"""
+        store = getattr(self, 'config_store', None)
+        if store is not None:
+            return store.mutable()
         return self.config_manager.load_config()
 
     def save_current_config(self, config: dict[str, Any] | None = None) -> None:
         """儲存目前設定到檔案。若傳入 config 則儲存該設定，否則從磁碟重新載入後儲存。"""
-        self.config_manager.save_config(config if config is not None else self.get_config())
+        persist_config(
+            self.config_manager,
+            config if config is not None else self.get_config(),
+        )
 
     def _resolve_save_delay_ms(self, config: dict[str, Any]) -> int:
         """
@@ -254,28 +271,61 @@ class ClockLogic:
         self._save_after_id = scheduler.after(self._save_delay_ms, self._do_save)
 
     def _do_save(self) -> None:
-        """執行實際的儲存動作（由 schedule_save 排程呼叫）。"""
+        """合併待儲存狀態，並將實際磁碟寫入交給背景 worker。"""
         self._save_after_id = None
         pending = self._pending_config
         pending_window_position = self._pending_window_position
         if pending is not None:
-            latest = self.get_config()
-            base = self._pending_config_base or latest
-            self.config_manager.save_config(
-                _apply_config_patch(latest, _build_config_patch(base, pending))
+            base = copy.deepcopy(self._pending_config_base or pending)
+            change_set = copy.deepcopy(pending)
+            self._write_config_update(
+                lambda latest: _apply_config_patch(
+                    latest,
+                    _build_config_patch(base, change_set),
+                ),
             )
             self._pending_config = None
             self._pending_config_base = None
             self._pending_window_position = None
         elif pending_window_position is not None:
-            config = self.get_config()
             x, y = pending_window_position
-            config.setdefault('window', {})['x'] = x
-            config['window']['y'] = y
-            self.config_manager.save_config(config)
+            self._write_config_update(
+                lambda latest: self._with_window_position(latest, x, y),
+            )
             self._pending_window_position = None
         else:
-            self.save_current_config()
+            self._write_config(self.get_config())
+
+    @staticmethod
+    def _with_window_position(
+        config: dict[str, Any],
+        x: int,
+        y: int,
+    ) -> dict[str, Any]:
+        """套用視窗位置到最新設定副本。"""
+        config.setdefault('window', {})['x'] = x
+        config['window']['y'] = y
+        return config
+
+    def _write_config_update(
+        self,
+        update: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> None:
+        """排入基於最新設定的背景更新；測試 stub 退回同步路徑。"""
+        schedule_update = getattr(
+            type(self.config_manager),
+            'schedule_config_update',
+            None,
+        )
+        if schedule_update is None:
+            latest = self.get_config()
+            self.config_manager.save_config(update(latest))
+            return
+        schedule_update(self.config_manager, update)
+
+    def _write_config(self, config: dict[str, Any]) -> None:
+        """由背景 writer 儲存；精簡測試 stub 退回同步相容路徑。"""
+        persist_config(self.config_manager, config)
 
     def flush_pending_save(self) -> None:
         """立即寫入尚未落盤的設定。
@@ -296,18 +346,33 @@ class ClockLogic:
             or getattr(self, '_pending_window_position', None) is not None
         ):
             self._do_save()
+        flush = getattr(self.config_manager, 'flush_config_saves', None)
+        if flush is not None:
+            flush()
 
     def _pomodoro_phase_change(self, phase: str) -> None:
-        self.notify_observers(Events.POMODORO_PHASE_CHANGE, phase)
+        self.notify_observers(
+            EventPublisher.publish(Events.POMODORO_PHASE_CHANGE, phase),
+        )
 
     def _pomodoro_tick(self, phase: str, remaining_seconds: int) -> None:
-        self.notify_observers(Events.POMODORO_TICK, phase, remaining_seconds)
+        self.notify_observers(
+            EventPublisher.publish(
+                Events.POMODORO_TICK,
+                phase,
+                remaining_seconds,
+            ),
+        )
 
     def _pomodoro_phase_complete(self, phase: str) -> None:
-        self.notify_observers(Events.POMODORO_PHASE_COMPLETE, phase)
+        self.notify_observers(
+            EventPublisher.publish(Events.POMODORO_PHASE_COMPLETE, phase),
+        )
 
     def _pomodoro_pause_toggled(self, is_paused: bool) -> None:
-        self.notify_observers(Events.POMODORO_PAUSE_TOGGLED, is_paused)
+        self.notify_observers(
+            EventPublisher.publish(Events.POMODORO_PAUSE_TOGGLED, is_paused),
+        )
 
     def _on_screenshot_triggered(self) -> None:
         """將截圖事件安全轉送到 Tk 主執行緒。"""
@@ -469,6 +534,8 @@ class ClockLogic:
 
         if hasattr(self, 'calendar_sync_service'):
             self.calendar_sync_service.stop()
+        if hasattr(self.config_manager, 'close_config_writer'):
+            self.config_manager.close_config_writer()
 
         # 關閉視窗
         if hasattr(self.ui, 'root'):

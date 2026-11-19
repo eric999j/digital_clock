@@ -5,6 +5,7 @@ from typing import Any
 from core.events import Events
 from core.pause_policy import MANUAL_SOURCE, PAUSE_KEYS, PausePolicy, PauseState
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 
 
 class PauseManager:
@@ -76,7 +77,7 @@ class PauseManager:
         state.set_pause_source(key, paused)
         is_paused = bool(sources[key])
         self._sync_legacy_fields(config, sources, vacation_sources)
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
         if was_paused != is_paused:
             event = Events.REMINDER_PAUSE_TOGGLED if key == 'reminder' else Events.HOURLY_WEB_PAUSE_TOGGLED
             self.notify(event, is_paused)
@@ -104,7 +105,7 @@ class PauseManager:
         state.set_vacation_source(source, active)
         is_vacation = bool(vacation_sources)
         self._sync_legacy_fields(config, sources, vacation_sources)
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
 
         for key in self._PAUSE_KEYS:
             after = bool(sources[key])

@@ -3,6 +3,8 @@ import copy
 import json
 import logging
 import os
+import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -152,6 +154,8 @@ class ConfigManager:
         }
         self._config_cache: dict[str, Any] | None = None
         self._cache_mtime_ns: int | None = None
+        self._cache_lock = threading.RLock()
+        self._writer = None
         self._initialized = True
 
     def _get_default_config_copy(self) -> dict[str, Any]:
@@ -172,6 +176,11 @@ class ConfigManager:
         Args:
             config: 設定字典
         """
+        with self._cache_lock:
+            self._save_config_unlocked(config)
+
+    def _save_config_unlocked(self, config: dict[str, Any]) -> None:
+        """保存完整設定；呼叫者持有 cache lock。"""
         temp_file = self.config_file.with_name(f'{self.config_file.name}.tmp')
         try:
             # 確保目錄存在
@@ -212,6 +221,11 @@ class ConfigManager:
         Returns:
             設定字典
         """
+        with self._cache_lock:
+            return self._load_config_unlocked(read_only)
+
+    def _load_config_unlocked(self, read_only: bool) -> dict[str, Any]:
+        """載入設定；呼叫者持有 cache lock。"""
         if not self.config_file.exists():
             # 檔案不存在時回傳預設值，並建立記憶體快取
             if self._config_cache is None or self._cache_mtime_ns is not None:
@@ -244,6 +258,47 @@ class ConfigManager:
             self._config_cache = default_config
             self._cache_mtime_ns = None
             return default_config if read_only else copy.deepcopy(default_config)
+
+    def schedule_config_save(self, config: dict[str, Any]) -> None:
+        """立即更新記憶體快照，並把磁碟寫入排到共用 worker。"""
+        snapshot = copy.deepcopy(config)
+        with self._cache_lock:
+            self._config_cache = copy.deepcopy(snapshot)
+            if self._cache_mtime_ns is None:
+                self._cache_mtime_ns = self._get_file_mtime_ns()
+        self._get_writer().submit(snapshot)
+
+    def schedule_config_update(
+        self,
+        update: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> None:
+        """在單一入列點更新記憶體快照後，把完整結果交給 worker。"""
+        with self._cache_lock:
+            latest = self._load_config_unlocked(read_only=False)
+            updated = update(latest)
+            snapshot = copy.deepcopy(updated)
+            self._config_cache = copy.deepcopy(snapshot)
+        self._get_writer().submit(snapshot)
+
+    def flush_config_saves(self, timeout: float | None = None) -> bool:
+        """等待此 manager 已排入的背景設定寫入。"""
+        writer = self._writer
+        return True if writer is None else writer.flush(timeout)
+
+    def close_config_writer(self) -> None:
+        """關閉共用 writer；供應用程式 shutdown 使用。"""
+        writer = self._writer
+        if writer is not None:
+            writer.close()
+            self._writer = None
+
+    def _get_writer(self) -> Any:
+        """延遲建立 writer，避免設定管理器沒有寫入需求時啟動執行緒。"""
+        if self._writer is None:
+            from services.config_writer import ConfigWriter
+
+            self._writer = ConfigWriter(self)
+        return self._writer
 
     def _migrate(self, user_config: Any) -> Any:
         """依序執行 schema migration；版本較新時不降級，只記錄警告。"""

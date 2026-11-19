@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from core.events import Events
 from core.url_validator import is_safe_url
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 from services.pause_manager import PauseManager
 from strategies.calendar_strategy import CalendarVacationStrategy
 
@@ -121,7 +122,7 @@ class CalendarSyncService:
             'refresh_minutes': self._clamp(refresh_minutes, 15, 1, 1440),
             'lead_minutes': self._clamp(lead_minutes, 10, 0, 120),
         }
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
         with self._lock:
             self._events = None
         self._apply_settings()

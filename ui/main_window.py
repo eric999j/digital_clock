@@ -16,8 +16,10 @@ from core.url_validator import is_safe_url
 from services.config_service import ConfigManager
 from services.countdown_service import CountdownService
 from services.log_service import LogService
+from ui.clock_renderer import ClockRenderer
 from ui.dpi import get_scale_factor, scale_px
 from ui.event_router import build_event_handlers
+from ui.info_band_presenter import InfoBandPresenter
 from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
@@ -131,6 +133,8 @@ class DigitalClock(Observer):
         }
         self._perf_last_log_ts: float = time.perf_counter()
         self._last_active_ui_ts: float = self._perf_last_log_ts
+        self._clock_renderer = ClockRenderer(self)
+        self._info_band_presenter = InfoBandPresenter(self)
 
         try:
             self._setup_window()
@@ -906,27 +910,12 @@ class DigitalClock(Observer):
 
     def _redraw_background(self) -> None:
         """依目前 Canvas 尺寸更新背景圓角矩形。"""
-        if self._background_item is None:
-            return
-
-        width = max(1, self.canvas.winfo_width())
-        height = max(1, self.canvas.winfo_height())
-        radius = min(self._px(self.CORNER_RADIUS), width // 2, height // 2)
-        self.canvas.coords(
-            self._background_item,
-            *self._rounded_rect_points(0, 0, width, height, radius),
-        )
+        self._get_clock_renderer().redraw_background()
 
     @staticmethod
     def _rounded_rect_points(x1: int, y1: int, x2: int, y2: int, radius: int) -> list[int]:
         """產生圓角矩形的 Canvas 多邊形座標。"""
-        return [
-            x1 + radius, y1, x1 + radius, y1, x2 - radius, y1, x2 - radius, y1,
-            x2, y1, x2, y1 + radius, x2, y1 + radius, x2, y2 - radius,
-            x2, y2 - radius, x2, y2, x2 - radius, y2, x2 - radius, y2,
-            x1 + radius, y2, x1 + radius, y2, x1, y2, x1, y2 - radius,
-            x1, y2 - radius, x1, y1 + radius, x1, y1 + radius, x1, y1,
-        ]
+        return ClockRenderer.rounded_rect_points(x1, y1, x2, y2, radius)
 
     def _draw_rounded_rect(self, x1: int, y1: int, x2: int, y2: int, radius: int, **kwargs: Any) -> int:
         """
@@ -940,11 +929,16 @@ class DigitalClock(Observer):
             radius: 圓角半徑
             **kwargs: 其他繪圖參數
         """
-        return self.canvas.create_polygon(
-            *self._rounded_rect_points(x1, y1, x2, y2, radius),
-            smooth=True,
-            **kwargs,
+        return self._get_clock_renderer().draw_rounded_rect(
+            x1, y1, x2, y2, radius, **kwargs,
         )
+
+    def _get_clock_renderer(self) -> ClockRenderer:
+        """取得延遲建立的 Canvas renderer，保留測試用 __new__ 相容性。"""
+        renderer = getattr(self, '_clock_renderer', None)
+        if renderer is None:
+            renderer = self._clock_renderer = ClockRenderer(self)
+        return renderer
 
     def change_font(self, font_family: str) -> None:
         """
@@ -1392,120 +1386,13 @@ class DigitalClock(Observer):
             text2: 下一個字串 (動畫中)
             progress: 動畫進度 (0.0 到 1.0)
         """
-        # 1. 檢查是否需要重新建立物件 (長度改變或初次運行)
-        text_len = len(text1)
-        if len(self._canvas_items) != text_len:
-            for item in self._canvas_items:
-                try:
-                    self.canvas.delete(item['main'], item['sub'])
-                except Exception as e:
-                    logger.debug("Canvas item delete failed: %s", e)
-            self._canvas_items.clear()
-            for _ in range(text_len):
-                self._canvas_items.append({
-                    'main': self.canvas.create_text(0, 0, anchor='center'),
-                    'sub': self.canvas.create_text(0, 0, anchor='center'),
-                    'last_main_char': '', 'last_sub_char': ''
-                })
-            self._last_render_state.clear()
-
-        # 2. 獲取當前渲染參數
-        theme = self.config['themes'].get(self.config['appearance']['theme'])
-        fg_color = theme['fg'] if theme else 'white'
-        font_family = self.config['appearance']['font_family']
-        font_size = self.config['appearance']['font_size']
-
-        # 3. 佈局計算 (只有在關鍵參數變動時執行)
-        win_w = self.root.winfo_width()
-        info_band_h = self._info_band_height()
-        curr_state_key = f"{text_len}_{font_family}_{font_size}_{win_w}_{self.root.winfo_height()}_{info_band_h}"
-        layout_changed = self._last_render_state.get('layout_key') != curr_state_key
-        if layout_changed:
-            try:
-                self._anim_font.configure(family=font_family, size=font_size)
-            except Exception as e:
-                logger.debug("Animation font configure failed: %s", e)
-
-            total_width = self._anim_font.measure(text1)
-            start_x = (self.canvas.winfo_width() - total_width) / 2
-            # 資訊列佔用視窗底部，時間文字固定在其上方的基準高度內置中
-            center_y = self._base_height / 2
-            line_height = font_size * 1.1
-
-            self._render_params = {
-                'start_x': start_x, 'center_y': center_y,
-                'line_height': line_height, 'font': (font_family, font_size)
-            }
-            self._last_render_state['layout_key'] = curr_state_key
-
-        params = self._render_params
-        current_x = params['start_x']
-        was_animating = self._last_render_state.get('was_animating', False)
-        is_animating_frame = text2 is not None
-
-        if (
-            not is_animating_frame
-            and not was_animating
-            and not layout_changed
-            and self._last_render_state.get('last_static_text') == text1
-            and self._last_render_state.get('last_fg_color') == fg_color
-        ):
-            return
-
-        # 4. 批次更新 Canvas 物件
-        for i in range(text_len):
-            char1 = text1[i]
-            char2 = text2[i] if text2 else None
-            item = self._canvas_items[i]
-            char_width = self._measure_char_width(char1, font_family, font_size)
-            cx = current_x + char_width / 2
-
-            if char2 is not None and char1 != char2:
-                # 動畫狀態
-                y_offset = progress * params['line_height']
-                main_y = params['center_y'] - y_offset
-                sub_y = params['center_y'] + params['line_height'] - y_offset
-
-                self.canvas.coords(item['main'], cx, main_y)
-                self.canvas.coords(item['sub'], cx, sub_y)
-                self.canvas.itemconfig(item['sub'], state='normal')
-
-                if item['last_main_char'] != char1:
-                    self.canvas.itemconfig(item['main'], text=char1, fill=fg_color, font=params['font'])
-                    item['last_main_char'] = char1
-                if item['last_sub_char'] != char2:
-                    self.canvas.itemconfig(item['sub'], text=char2, fill=fg_color, font=params['font'])
-                    item['last_sub_char'] = char2
-            else:
-                # 靜態狀態
-                if layout_changed or self._last_render_state.get(f'static_{i}') != char1 or was_animating:
-                    self.canvas.coords(item['main'], cx, params['center_y'])
-                    self.canvas.itemconfig(item['main'], text=char1, fill=fg_color, font=params['font'], state='normal')
-                    self.canvas.itemconfig(item['sub'], state='hidden')
-                    item['last_main_char'] = char1
-                    self._last_render_state[f'static_{i}'] = char1
-
-            current_x += char_width
-
-        self._last_render_state['was_animating'] = is_animating_frame
-        if is_animating_frame:
-            self._last_render_state['last_static_text'] = None
-        else:
-            self._last_render_state['last_static_text'] = text1
-            self._last_render_state['last_fg_color'] = fg_color
+        self._get_clock_renderer().render_clock(text1, text2, progress)
 
     def _measure_char_width(self, char: str, font_family: str, font_size: int) -> int:
         """測量單字元寬度，使用字型+字元快取減少重複 Font.measure。"""
-        cache_key = (font_family, font_size, char)
-        cached = self._char_width_cache.get(cache_key)
-        if cached is not None:
-            return cached
-
-        width = self._anim_font.measure(char)
-        if len(self._char_width_cache) >= self._char_width_cache_limit:
-            self._char_width_cache.clear()
-        self._char_width_cache[cache_key] = width
-        return width
+        return self._get_clock_renderer().measure_char_width(
+            char, font_family, font_size,
+        )
 
     def _record_performance_sample(
         self,
@@ -1593,16 +1480,7 @@ class DigitalClock(Observer):
 
     def _fit_info_font_size(self, available: int) -> int:
         """回傳資訊列在可用寬度內的最大字級；以独立的量測字型計算，不動到畫面上在用的字型。"""
-        probe = self._info_probe_font
-        if probe is None:
-            probe = self._info_probe_font = tkfont.Font(root=self.root, font=self._info_font)
-        family = self._info_font.cget('family')
-        size = self._info_font_size
-        probe.configure(family=family, size=size)
-        while size > 8 and max(probe.measure(line) for line in self._info_lines) > available:
-            size -= 1
-            probe.configure(size=size)
-        return size
+        return self._get_info_band_presenter().fit_font_size(available)
 
     def _update_info_font(self) -> None:
         """依目前字型與大小更新資訊列字型與行高（字體約為時鐘的 1/4）。"""
@@ -1619,38 +1497,15 @@ class DigitalClock(Observer):
 
     def _info_band_height(self) -> int:
         """資訊列所需高度；沒有任何資訊時為 0，視窗維持原本大小。"""
-        if not self._info_lines:
-            return 0
-        return len(self._info_lines) * self._info_line_px + self._px(self.INFO_BAND_PADDING)
+        return self._get_info_band_presenter().band_height()
 
     def _compose_info_lines(self, now: datetime | None = None) -> list[str]:
         """組合資訊列文字：番茄鐘（若在執行）、倒數計時（若有）在前，接著是各已選時區。"""
-        lines: list[str] = []
-        if self._pomodoro_line:
-            lines.append(self._pomodoro_line)
-        countdown = self.logic.countdown_service
-        if countdown.is_active:
-            name = f"{countdown.label} " if countdown.label else ""
-            remaining = CountdownService.format_remaining(countdown.remaining_seconds())
-            paused = " (暫停)" if countdown.is_paused else ""
-            lines.append(f"{name}倒數 {remaining}{paused}")
-
-        pending = getattr(self, '_todo_pending', 0)
-        if pending > 0 and self.config.get('todo', {}).get('show_in_info_bar', True):
-            lines.append(f"待辦 {pending} 項")
-
-        time_format = self.config['appearance'].get('time_format', '24h')
-        for zone in self.logic.get_zone_times(now):
-            day_hint = {1: " (+1)", -1: " (-1)"}.get(zone.day_offset, "")
-            lines.append(f"{zone.label} {self._format_time_str(zone.local_time, time_format)}{day_hint}")
-        return lines
+        return self._get_info_band_presenter().compose_lines(now)
 
     def _refresh_info_lines(self, now: datetime | None = None) -> None:
         """重新計算資訊列內容並在有變化時更新畫面。"""
-        try:
-            self._set_info_lines(self._compose_info_lines(now))
-        except Exception as e:
-            logger.warning("Error refreshing info lines: %s", e)
+        self._get_info_band_presenter().refresh(now)
 
     def _set_info_lines(self, lines: list[str]) -> None:
         """
@@ -1659,60 +1514,18 @@ class DigitalClock(Observer):
         Args:
             lines: 要顯示的文字行（空清單代表隱藏資訊列）
         """
-        if lines == self._info_lines:
-            return
-        if self._context_menu_open and len(lines) != len(self._info_lines):
-            # 選單開啟時變更視窗高度會讓選單跳開，選單關閉後再套用
-            return
-        old_band_height = self._info_band_height()
-        self._info_lines = list(lines)
-        if self._info_band_height() != old_band_height:
-            self._apply_window_size(
-                self.config['window']['width'],
-                self._base_height + self._info_band_height(),
-            )
-            self.root.update_idletasks()
-            self._last_render_state.clear()
-            self._redraw_background()
-            self._update_display_time()
-        self._render_info_band()
+        self._get_info_band_presenter().set_lines(lines)
 
     def _render_info_band(self) -> None:
         """在時鐘文字下方繪製資訊列；文字過寬時自動縮小字級以符合視窗寬度。"""
-        if self._info_font is None:
-            return
-        for item in self._info_items[len(self._info_lines):]:
-            self.canvas.delete(item)
-        del self._info_items[len(self._info_lines):]
-        if not self._info_lines:
-            return
+        self._get_info_band_presenter().render()
 
-        theme = self._get_current_theme()
-        fg_color = theme['fg'] if theme else 'white'
-        width = self.config['window']['width']
-
-        size = self._fit_info_font_size(max(10, width - 16))
-        # 即使設定相同值，重設已使用中的具名字型仍會讓開啟中的 Windows 右鍵選單被關閉
-        if int(self._info_font.cget('size')) != size:
-            self._info_font.configure(size=size)
-
-        top = self._base_height - 2
-        for i, line in enumerate(self._info_lines):
-            y = top + i * self._info_line_px + self._info_line_px / 2
-            if i < len(self._info_items):
-                item = self._info_items[i]
-                self.canvas.coords(item, width / 2, y)
-                self.canvas.itemconfig(item, text=line, fill=fg_color, font=self._info_font)
-            else:
-                self._info_items.append(self.canvas.create_text(
-                    width / 2, y, text=line, fill=fg_color, font=self._info_font, anchor='center',
-                ))
-            self.canvas.dtag(self._info_items[i], 'todo_link')
-            if line.startswith('待辦 '):
-                self.canvas.addtag_withtag('todo_link', self._info_items[i])
-        self.canvas.tag_bind('todo_link', '<ButtonRelease-1>', self._on_todo_link_click)
-        self.canvas.tag_bind('todo_link', '<Enter>', lambda e: self.canvas.configure(cursor='hand2'))
-        self.canvas.tag_bind('todo_link', '<Leave>', lambda e: self.canvas.configure(cursor=''))
+    def _get_info_band_presenter(self) -> InfoBandPresenter:
+        """取得延遲建立的資訊列 presenter。"""
+        presenter = getattr(self, '_info_band_presenter', None)
+        if presenter is None:
+            presenter = self._info_band_presenter = InfoBandPresenter(self)
+        return presenter
 
     def _on_todo_link_click(self, event: tk.Event) -> None:
         """單擊「待辦 N 項」資訊列時開啟待辦視窗。"""

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 
 logger = logging.getLogger(__name__)
 from core.events import Events
@@ -67,7 +68,7 @@ class HourlyWebService:
         else:
             # 清空舊欄位，避免規則刪光後策略退回舊版單一 URL 而復活
             hw['url'] = ''
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
         self.notify(Events.HOURLY_WEB_UPDATED, None)
 
     def run_startup_rules(self, config: dict[str, Any] | None = None) -> None:

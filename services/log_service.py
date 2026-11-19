@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 
 logger = logging.getLogger(__name__)
 
@@ -76,4 +77,4 @@ class LogService:
     def _save_last_cleared_at(self, config: dict[str, Any], when: datetime) -> None:
         """儲存自動清理週期的起算時間。"""
         config['system']['log_last_cleared_at'] = when.isoformat(timespec='seconds')
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)

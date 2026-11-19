@@ -20,6 +20,7 @@ from core.todo_commands import (
 from core.todo_filter import TodoFilter
 from core.todo_task import PRIORITIES, PRIORITY_NORMAL, TodoTask
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 from services.todo_store import TodoStore
 from services.todo_transfer_service import TodoTransferService
 from strategies.todo_due_strategy import TodoDueStrategy
@@ -290,7 +291,7 @@ class TodoService:
         """寫入「整點提醒到期待辦」開關。"""
         config = self.config_manager.load_config()
         config.setdefault('todo', {})['remind_enabled'] = bool(enabled)
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
         self.notify(Events.TODO_REMIND_TOGGLED, bool(enabled))
 
     def check(self, now: datetime | None = None, config: dict[str, Any] | None = None) -> None:

@@ -19,10 +19,9 @@ class PomodoroStrategy(PhaseStrategy):
             下一個階段名稱
         """
         if phase == "FOCUS":
-            if (current_cycle + 1) % config.get("cycles_before_long_break", 4) == 0:
+            cycle_limit = max(1, int(config.get("cycles_before_long_break", 4)))
+            if (current_cycle + 1) % cycle_limit == 0:
                 return "LONG_BREAK"
-            else:
-                return "SHORT_BREAK"
-        else:
-            return "FOCUS"
+            return "SHORT_BREAK"
+        return "FOCUS"
 

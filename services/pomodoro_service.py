@@ -4,6 +4,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from strategies.pomodoro_strategy import PomodoroStrategy
+
 
 class PomodoroService:
     """獨立番茄鐘引擎，不依賴 tkinter。
@@ -17,6 +19,7 @@ class PomodoroService:
         config_getter: Callable[[], dict[str, Any]],
         callbacks: dict[str, Callable] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        strategy: PomodoroStrategy | None = None,
     ) -> None:
         """
         初始化番茄鐘服務。
@@ -25,10 +28,12 @@ class PomodoroService:
             config_getter: 回傳最新番茄鐘設定的 callable，每次 start 時呼叫以取得最新值
             callbacks: 回調函數字典
             clock: 單調時鐘函數，測試時可注入假時鐘
+            strategy: 番茄鐘階段切換策略
         """
         self._get_config = config_getter
         self.callbacks = callbacks or {}
         self._clock = clock
+        self.strategy = strategy or PomodoroStrategy()
         self._deadline: float = 0.0
         self._paused_remaining: float | None = None
         self.phase: str = "IDLE"
@@ -112,12 +117,30 @@ class PomodoroService:
 
     def _complete_phase(self) -> None:
         """完成當前階段，進入下一階段。"""
-        if self.phase == "FOCUS":
+        completed_phase = self.phase
+        next_phase = self.strategy.next_phase(
+            completed_phase,
+            self.current_cycle,
+            self._get_config(),
+        )
+        if completed_phase == "FOCUS":
             self.current_cycle += 1
-            self.start_break()
-        else:
+        if next_phase == "FOCUS":
             self.start_focus()
+        else:
+            self._start_phase(next_phase)
         self._emit("on_complete", self.phase)
+
+    def _start_phase(self, phase: str) -> None:
+        """依策略回傳的階段啟動休息計時。"""
+        cfg = self._get_config()
+        if phase == "LONG_BREAK":
+            self.phase = "LONG_BREAK"
+            self.remaining_seconds = cfg["long_break"] * 60
+        else:
+            self.phase = "SHORT_BREAK"
+            self.remaining_seconds = cfg["short_break"] * 60
+        self._emit("on_phase_change", self.phase)
 
     def stop(self) -> None:
         """停止番茄鐘。"""

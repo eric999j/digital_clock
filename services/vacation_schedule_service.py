@@ -7,6 +7,7 @@ from typing import Any
 
 from core.events import Events
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 from services.pause_manager import PauseManager
 from strategies.vacation_schedule_strategy import VacationScheduleStrategy
 
@@ -87,7 +88,7 @@ class VacationScheduleService:
         schedules = config.setdefault('vacation_schedules', [])
         schedules.append(schedule)
         schedules.sort(key=lambda s: (s.get('start', ''), s.get('end', '')))
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
         self.notify(Events.VACATION_SCHEDULE_ADDED, schedule)
         return schedule
 
@@ -102,7 +103,7 @@ class VacationScheduleService:
         for idx, existing in enumerate(schedules):
             if self._matches(existing, schedule_to_delete):
                 removed = schedules.pop(idx)
-                self.config_manager.save_config(config)
+                persist_config(self.config_manager, config)
                 self.notify(Events.VACATION_SCHEDULE_DELETED, removed)
                 return
 
@@ -133,7 +134,7 @@ class VacationScheduleService:
                 'note': (note or "").strip(),
             })
             schedules.sort(key=lambda item: (item.get('start', ''), item.get('end', '')))
-            self.config_manager.save_config(config)
+            persist_config(self.config_manager, config)
             self.notify(Events.VACATION_SCHEDULE_UPDATED, existing)
             return existing
 
@@ -199,7 +200,7 @@ class VacationScheduleService:
             remaining = active + future
             remaining.sort(key=lambda s: (s.get('start', ''), s.get('end', '')))
             config_data['vacation_schedules'] = remaining
-            self.config_manager.save_config(config_data)
+            persist_config(self.config_manager, config_data)
             self.notify(Events.VACATION_SCHEDULE_UPDATED, remaining)
 
         # 觸發狀態變更（會再次讀寫 config，故放在最後）。來源可與手動／行事曆共存。

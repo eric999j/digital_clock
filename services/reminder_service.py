@@ -5,6 +5,7 @@ from typing import Any
 
 from core.events import Events
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 from strategies.reminder_strategy import ReminderStrategy
 
 
@@ -65,7 +66,7 @@ class ReminderService:
             config['reminders'],
             key=lambda r: r.get('datetime') or r.get('time')
         )
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
 
         if is_update:
             self.notify(Events.REMINDER_UPDATED, reminder_data)
@@ -191,4 +192,4 @@ class ReminderService:
 
     def _save_config(self, config: dict[str, Any]) -> None:
         """儲存設定。"""
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)

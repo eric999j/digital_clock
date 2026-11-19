@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.events import Events
 from services.config_service import ConfigManager
+from services.config_store import persist_config
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ class TimezoneService:
 
         config = self.config_manager.load_config()
         config.setdefault('timezones', {})['selected'] = selected
-        self.config_manager.save_config(config)
+        persist_config(self.config_manager, config)
         self.notify(Events.TIMEZONES_UPDATED, list(selected))
         return key in selected
 
