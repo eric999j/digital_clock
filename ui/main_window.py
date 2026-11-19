@@ -11,7 +11,6 @@ from tkinter import Menu, messagebox
 from typing import Any
 
 from core.clock_logic import ClockLogic
-from core.events import Events
 from core.observer import Observer
 from core.url_validator import is_safe_url
 from services.config_service import ConfigManager
@@ -23,8 +22,8 @@ from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
 from ui.theme_utils import BUTTON_BG, BUTTON_FG, random_theme, themed_confirm, themed_error, themed_info
-from ui.window_controller import WindowController
 from ui.window_bounds import clamp_position, get_screen_bounds
+from ui.window_controller import WindowController
 
 logger = logging.getLogger(__name__)
 

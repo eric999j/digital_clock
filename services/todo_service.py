@@ -20,9 +20,7 @@ from core.todo_commands import (
 from core.todo_filter import TodoFilter
 from core.todo_task import PRIORITIES, PRIORITY_NORMAL, TodoTask
 from services.config_service import ConfigManager
-from services.todo_store import (
-    TodoStore,
-)
+from services.todo_store import TodoStore
 from services.todo_transfer_service import TodoTransferService
 from strategies.todo_due_strategy import TodoDueStrategy
 
