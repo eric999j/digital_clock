@@ -1,0 +1,7 @@
+unit: pomodoro
+commit: false
+candidate_splits:
+  - id: "services/pomodoro_service.py:79-126"
+    drivers: [lifecycle_split]
+    rationale: "Phase transition policy and monotonic deadline timer mechanics can be tested and reused independently."
+    source_slice: {file: services/pomodoro_service.py, lines: [79, 126]}

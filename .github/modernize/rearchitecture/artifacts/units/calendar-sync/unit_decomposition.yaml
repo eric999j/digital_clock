@@ -1,0 +1,11 @@
+unit: calendar-sync
+commit: false
+candidate_splits:
+  - id: "services/calendar_sync_service.py:90-241"
+    drivers: [execution_model_split, protocol_split]
+    rationale: "Settings/test/fetch parsing and main-thread state transitions communicate through an in-memory cache boundary."
+    source_slice: {file: services/calendar_sync_service.py, lines: [90, 241]}
+  - id: "services/calendar_sync_service.py:247-295"
+    drivers: [lifecycle_split]
+    rationale: "Meeting state and vacation-source ownership can be tested separately from transport scheduling."
+    source_slice: {file: services/calendar_sync_service.py, lines: [247, 295]}

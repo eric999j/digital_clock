@@ -1,0 +1,17 @@
+unit: countdown
+side_effects:
+  - {source_loc: "services/countdown_service.py:66", effect: "Replaces any active countdown, labels it, and emits COUNTDOWN_STARTED.", must_preserve: true}
+  - {source_loc: "services/countdown_service.py:118", effect: "Emits changed remaining time or resets and emits COUNTDOWN_FINISHED.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:279", effect: "On finish, rings the bell and shows a nonblocking themed popup.", must_preserve: true}
+branches:
+  - {source_loc: "services/countdown_service.py:66", condition: "Seconds are not an integer in 1..86400.", behavior: "Reject with ValueError.", must_preserve: true}
+  - {source_loc: "services/countdown_service.py:103", condition: "RUNNING/PAUSED state.", behavior: "Toggle; idle remains a no-op.", must_preserve: true}
+error_paths:
+  - {source_loc: "ui/main_window.py:285", trigger: "System bell is unavailable.", outcome: "Ignore TclError and continue with the popup.", contract: "Countdown completion is still reported.", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/countdown_service.py:118"
+    scope: "State reset and completion emission happen together in one tick."
+    isolation: "Monotonic clock avoids wall-clock adjustment but assumes single-thread ownership."
+    must_preserve: true

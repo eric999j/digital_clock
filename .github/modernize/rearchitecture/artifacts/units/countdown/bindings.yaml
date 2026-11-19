@@ -1,0 +1,6 @@
+unit: countdown
+bindings:
+  - {type: listener, name: "CountdownMenu quick/custom actions", source_loc: "ui/menus/countdown_menu.py:23", target: "ClockLogic.start_countdown and pause/cancel delegates", must_appear_in_target: true, notes: "Menu state depends on service snapshot."}
+  - {type: listener, name: "COUNTDOWN_* -> info band and popup", source_loc: "ui/main_window.py:168", target: "DigitalClock countdown handlers", must_appear_in_target: true, notes: "Tick, pause, cancel, finish contracts."}
+runtime_config: []
+reason: "Countdown duration and label are user-entered per run and not externally configured."

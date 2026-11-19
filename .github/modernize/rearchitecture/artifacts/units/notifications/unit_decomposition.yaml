@@ -1,0 +1,7 @@
+unit: notifications
+commit: false
+candidate_splits:
+  - id: "services/notification_center.py:75-137"
+    drivers: [concern_split]
+    rationale: "Event-to-notification projection and bounded history operations can evolve independently."
+    source_slice: {file: services/notification_center.py, lines: [75, 137]}

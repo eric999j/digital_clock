@@ -1,0 +1,20 @@
+unit: calendar-sync
+side_effects:
+  - {source_loc: "services/calendar_sync_service.py:100", effect: "Persists normalized HTTPS settings, clears event cache, reapplies worker settings, and wakes refresh.", must_preserve: true}
+  - {source_loc: "services/calendar_sync_service.py:176", effect: "Downloads and parses ICS in a daemon thread; failures retain previous cache.", must_preserve: true}
+  - {source_loc: "services/calendar_sync_service.py:247", effect: "On main thread, acquires/releases calendar vacation and emits upcoming/started/ended.", must_preserve: true}
+branches:
+  - {source_loc: "strategies/calendar_strategy.py:30", condition: "Events overlap or touch.", behavior: "Merge into one interval so vacation does not flicker between meetings.", must_preserve: true}
+  - {source_loc: "services/calendar_sync_service.py:247", condition: "Settings disabled and calendar owns vacation.", behavior: "Release only the calendar source.", must_preserve: true}
+  - {source_loc: "services/calendar_sync_service.py:247", condition: "Current event matches an already-entered key.", behavior: "Keep state and avoid duplicate start event.", must_preserve: true}
+  - {source_loc: "services/calendar_sync_service.py:247", condition: "Fetch cache is None or fetch failed.", behavior: "Do not infer an ended meeting; preserve previous effective state.", must_preserve: true}
+error_paths:
+  - {source_loc: "services/calendar_sync_service.py:100", trigger: "Enabled URL is not valid HTTPS.", outcome: "Reject with ValueError and preserve prior settings.", contract: "", must_preserve: true}
+  - {source_loc: "services/calendar_sync_service.py:176", trigger: "Fetch, parse, dependency, or size failure.", outcome: "Log host plus exception type only; retain previous events.", contract: "Never log complete ICS URL.", must_preserve: true}
+concurrency:
+  model: thread-pool
+  tx_boundary:
+    source_loc: "services/calendar_sync_service.py:247"
+    scope: "Worker owns fetch/parse/cache update under lock; main thread alone applies pause state and notifications."
+    isolation: "Lock protects cache/settings handoff; no UI access from worker."
+    must_preserve: true

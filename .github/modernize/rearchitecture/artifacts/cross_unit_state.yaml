@@ -1,0 +1,73 @@
+flows:
+  - name: app-settings-cache
+    medium: cache
+    key: "~/.digital_clock/config.json + ConfigManager._config_cache"
+    writer:
+      {unit: appearance-settings, source_loc: "ui/main_window.py:1253"}
+    reader:
+      {unit: clock-shell, source_loc: "core/clock_logic.py:307"}
+    pairing: matched
+    must_preserve: true
+    must_confirm: null
+    verification_hint: "Change appearance, then trigger a service save before debounce flush; verify both changes survive."
+    notes: "Multiple components own slices of the same dict; pending UI state can otherwise be overwritten by a full save."
+  - name: pause-source-sets
+    medium: file
+    key: "pause_sources + vacation_sources"
+    writer:
+      {unit: vacation-mode, source_loc: "services/pause_manager.py:134"}
+    reader:
+      {unit: reminders, source_loc: "services/reminder_service.py:133"}
+    pairing: matched
+    must_preserve: true
+    must_confirm: null
+    verification_hint: "Combine manual pause, schedule pause, and calendar pause; release sources in different order."
+    notes: "Effective pause is union-like over persistent sources and must not be reduced to a boolean."
+  - name: calendar-vacation
+    medium: file
+    key: "vacation_sources: calendar"
+    writer:
+      {unit: calendar-sync, source_loc: "services/calendar_sync_service.py:277"}
+    reader:
+      {unit: vacation-mode, source_loc: "services/pause_manager.py:183"}
+    pairing: matched
+    must_preserve: true
+    must_confirm: null
+    verification_hint: "End calendar event while manual and schedule sources remain; only calendar source is released."
+    notes: "Calendar owns only its own vacation source."
+  - name: todo-pending-count
+    medium: event
+    key: Events.TODO_UPDATED
+    writer:
+      {unit: todo, source_loc: "services/todo_service.py:188"}
+    reader:
+      {unit: clock-shell, source_loc: "ui/main_window.py:522"}
+    pairing: matched
+    must_preserve: true
+    must_confirm: null
+    verification_hint: "Create, complete, undo, import, and restore; info bar count must equal pending tasks."
+    notes: "The integer payload is duplicated into AppState and the main window."
+  - name: feature-notification-events
+    medium: event
+    key: "POMODORO_PHASE_COMPLETE/REMINDER_DUE/COUNTDOWN_FINISHED/TODO_DUE/CALENDAR_EVENT_*"
+    writer:
+      {unit: clock-shell, source_loc: "core/clock_logic.py:101"}
+    reader:
+      {unit: notifications, source_loc: "services/notification_center.py:109"}
+    pairing: matched
+    must_preserve: true
+    must_confirm: null
+    verification_hint: "Trigger each source and assert one correctly labeled bounded notification is added."
+    notes: "Todo text is intentionally excluded to avoid duplicating task content into notification history."
+  - name: app-state-snapshot
+    medium: event
+    key: Events.APP_STATE_CHANGED
+    writer:
+      {unit: clock-shell, source_loc: "core/app_state.py:96"}
+    reader:
+      {unit: notifications, source_loc: "services/notification_center.py:50"}
+    pairing: unmatched-reader
+    must_preserve: false
+    must_confirm: runtime
+    verification_hint: "Record subscribers of APP_STATE_CHANGED; no current behavior should silently depend on state ordering beyond observer registration."
+    notes: "Snapshot exists and is registered before UI, but current consumers are sparse; future use requires an explicit consumer contract."

@@ -3,6 +3,7 @@ from collections.abc import Callable
 from typing import Any
 
 from core.events import Events
+from core.pause_policy import MANUAL_SOURCE, PAUSE_KEYS, PausePolicy, PauseState
 from services.config_service import ConfigManager
 
 
@@ -13,9 +14,8 @@ class PauseManager:
     寫入，讓既有設定、服務與舊版本程式可安全共存。
     """
 
-    _PAUSE_KEYS = ('reminder', 'hourly_web')
-    _MANUAL = 'manual'
-    _VACATION = 'vacation'
+    _PAUSE_KEYS = PAUSE_KEYS
+    _MANUAL = MANUAL_SOURCE
 
     def __init__(self, config_manager: ConfigManager, notify_callback: Callable[[str, Any], None]) -> None:
         self.config_manager = config_manager
@@ -34,53 +34,11 @@ class PauseManager:
     @classmethod
     def _legacy_pause_sources(cls, config: dict[str, Any]) -> dict[str, set[str]]:
         """由舊版布林欄位推導來源，不就地修改傳入的唯讀快照。"""
-        raw = config.get('pause_sources')
-        if isinstance(raw, dict):
-            result = {
-                key: {str(source) for source in raw.get(key, []) if isinstance(source, str)}
-                for key in cls._PAUSE_KEYS
-            }
-            # Config merge 會替舊檔補上空集合；若舊布林欄位仍顯示暫停，
-            # 空集合不是有效的新狀態，必須走一次遷移。
-            inconsistent = (
-                (config.get('on_vacation', False) and not any(cls._VACATION in sources for sources in result.values()))
-                or (config.get('reminder_paused', False) and not result['reminder'])
-                or (config.get('hourly_web_reminder', {}).get('paused', False) and not result['hourly_web'])
-            )
-            if not inconsistent:
-                return result
-
-        vacation_active = bool(config.get('on_vacation', False))
-        previous = config.get('vacation_previous_state', {})
-        result: dict[str, set[str]] = {key: set() for key in cls._PAUSE_KEYS}
-        reminder_manual = bool(previous.get('reminder_paused', False)) if vacation_active else bool(config.get('reminder_paused', False))
-        hourly_manual = bool(previous.get('hourly_web_paused', False)) if vacation_active else bool(config.get('hourly_web_reminder', {}).get('paused', False))
-        if reminder_manual:
-            result['reminder'].add(cls._MANUAL)
-        if hourly_manual:
-            result['hourly_web'].add(cls._MANUAL)
-        if vacation_active:
-            for sources in result.values():
-                sources.add(cls._VACATION)
-        return result
+        return PausePolicy.from_config(config).pause_sources
 
     @staticmethod
     def _vacation_sources(config: dict[str, Any]) -> set[str]:
-        raw = config.get('vacation_sources')
-        if isinstance(raw, list) and (raw or not config.get('on_vacation', False)):
-            return {str(source) for source in raw if isinstance(source, str)}
-        if config.get('on_vacation', False):
-            return {str(config.get('on_vacation_source') or 'manual')}
-        return set()
-
-    def _migrate(self, config: dict[str, Any]) -> tuple[dict[str, set[str]], set[str]]:
-        """將舊版休假快照升級為來源集合並回傳可修改的集合。"""
-        pause_sources = self._legacy_pause_sources(config)
-        vacation_sources = self._vacation_sources(config)
-        config['pause_sources'] = {key: sorted(sources) for key, sources in pause_sources.items()}
-        config['vacation_sources'] = sorted(vacation_sources)
-        config.pop('vacation_previous_state', None)
-        return pause_sources, vacation_sources
+        return PausePolicy.vacation_sources_from_config(config)
 
     def _sync_legacy_fields(
         self, config: dict[str, Any], pause_sources: dict[str, set[str]], vacation_sources: set[str],
@@ -111,12 +69,11 @@ class PauseManager:
         if key not in self._PAUSE_KEYS:
             return
         config = self.config
-        sources, vacation_sources = self._migrate(config)
+        state = self._state_from(config)
+        sources = state.pause_sources
+        vacation_sources = state.vacation_sources
         was_paused = bool(sources[key])
-        if paused:
-            sources[key].add(self._MANUAL)
-        else:
-            sources[key].discard(self._MANUAL)
+        state.set_pause_source(key, paused)
         is_paused = bool(sources[key])
         self._sync_legacy_fields(config, sources, vacation_sources)
         self.config_manager.save_config(config)
@@ -139,20 +96,13 @@ class PauseManager:
         """
         source = source.strip() or self._MANUAL
         config = self.config
-        sources, vacation_sources = self._migrate(config)
+        state = self._state_from(config)
+        sources = state.pause_sources
+        vacation_sources = state.vacation_sources
         was_vacation = bool(vacation_sources)
         before = {key: bool(sources[key]) for key in self._PAUSE_KEYS}
-        if active:
-            vacation_sources.add(source)
-        else:
-            vacation_sources.discard(source)
+        state.set_vacation_source(source, active)
         is_vacation = bool(vacation_sources)
-        if is_vacation:
-            for key in self._PAUSE_KEYS:
-                sources[key].add(self._VACATION)
-        else:
-            for key in self._PAUSE_KEYS:
-                sources[key].discard(self._VACATION)
         self._sync_legacy_fields(config, sources, vacation_sources)
         self.config_manager.save_config(config)
 
@@ -190,3 +140,14 @@ class PauseManager:
         config_data = config if config is not None else self.config
         sources = self._vacation_sources(config_data)
         return next(iter(sources)) if len(sources) == 1 else None
+
+    def _state_from(self, config: dict[str, Any]) -> PauseState:
+        """建立來源狀態並同步升級後的持久化欄位。"""
+        state = PausePolicy.from_config(config)
+        config['pause_sources'] = {
+            key: sorted(sources)
+            for key, sources in state.pause_sources.items()
+        }
+        config['vacation_sources'] = sorted(state.vacation_sources)
+        config.pop('vacation_previous_state', None)
+        return state

@@ -1,0 +1,8 @@
+unit: appearance-settings
+bindings:
+  - {type: listener, name: "ContextMenu clock settings", source_loc: "ui/menus/context_menu.py:178", target: "DigitalClock appearance/log methods", must_appear_in_target: true, notes: "Fonts, formats, themes, opacity, radius, logs."}
+  - {type: convention, name: "platform window attributes", source_loc: "ui/main_window.py:683", target: "tkinter topmost/transparency/toolwindow binding", must_appear_in_target: true, notes: "Windows/macOS/Linux differ."}
+runtime_config:
+  - {key: "appearance.*", source_loc: "ui/main_window.py:34", source: code, default_value: "font Arial 56, blue theme, 24h", must_appear_in_target: true, notes: "Visual state and named custom themes."}
+  - {key: "window.*", source_loc: "ui/main_window.py:683", source: code, default_value: "200x70, alpha 1.0/0.5", must_appear_in_target: true, notes: "Geometry and opacity."}
+  - {key: "system.log_auto_clear_enabled", source_loc: "services/log_service.py:48", source: code, default_value: "true", must_appear_in_target: true, notes: "Automatic log cleanup switch."}

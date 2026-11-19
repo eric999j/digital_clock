@@ -1,0 +1,19 @@
+unit: vacation-mode
+side_effects:
+  - {source_loc: "services/vacation_schedule_service.py:53", effect: "Adds a sorted date schedule and emits schedule-added.", must_preserve: true}
+  - {source_loc: "services/pause_manager.py:134", effect: "Adds/removes one vacation source, updates affected feature pause sources, saves legacy fields, and emits transitions.", must_preserve: true}
+  - {source_loc: "services/pause_manager.py:134", effect: "Entering first vacation source stops the pomodoro via injected callback.", must_preserve: true}
+branches:
+  - {source_loc: "services/vacation_schedule_service.py:142", condition: "An active schedule is newly marked and schedule source is not held.", behavior: "Acquire schedule vacation after persisting auto_started.", must_preserve: true}
+  - {source_loc: "services/vacation_schedule_service.py:142", condition: "Expired auto-started schedules remain but no active schedule and schedule source is held.", behavior: "Release only schedule source.", must_preserve: true}
+  - {source_loc: "services/pause_manager.py:169", condition: "Manual toggle occurs while only automatic sources are held.", behavior: "Release each automatic source; do not immediately re-enable from the same interval.", must_preserve: true}
+error_paths:
+  - {source_loc: "services/vacation_schedule_service.py:53", trigger: "Date is invalid or end precedes start.", outcome: "Reject with ValueError.", contract: "No partial schedule save.", must_preserve: true}
+  - {source_loc: "services/vacation_schedule_service.py:142", trigger: "Stored schedule is invalid.", outcome: "Classify and remove it.", contract: "", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/pause_manager.py:134"
+    scope: "Source mutation, legacy projection, config save, and transition events."
+    isolation: "Main-thread state; manual and automatic writers serialize through the tick/UI loop."
+    must_preserve: true

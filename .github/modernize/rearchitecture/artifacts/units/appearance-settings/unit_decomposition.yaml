@@ -1,0 +1,11 @@
+unit: appearance-settings
+commit: false
+candidate_splits:
+  - id: "ui/main_window.py:1051-1304"
+    drivers: [concern_split, data_ownership_split]
+    rationale: "Preference mutation, canvas re-render, menu theming, dialog naming, and config persistence can be separated."
+    source_slice: {file: ui/main_window.py, lines: [1051, 1304]}
+  - id: "ui/main_window.py:1444-1825"
+    drivers: [nfr_split, concern_split]
+    rationale: "Time animation and info-band layout are performance-sensitive rendering concerns separate from setting commands."
+    source_slice: {file: ui/main_window.py, lines: [1444, 1825]}

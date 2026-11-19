@@ -1,0 +1,11 @@
+unit: clock-shell
+commit: false
+candidate_splits:
+  - id: "core/clock_logic.py:27-256"
+    drivers: [lifecycle_split, concern_split]
+    rationale: "Service composition and observer dispatch are independent from debounce persistence and close sequencing."
+    source_slice: {file: core/clock_logic.py, lines: [27, 256]}
+  - id: "ui/main_window.py:683-1904"
+    drivers: [concern_split, execution_model_split]
+    rationale: "Window lifecycle, recurring scheduling, rendering, menus, and feature dialog translation share one controller."
+    source_slice: {file: ui/main_window.py, lines: [683, 1904]}

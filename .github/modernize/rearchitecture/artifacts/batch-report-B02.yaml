@@ -1,0 +1,26 @@
+batch_id: B02
+completed_tasks: [T004, T005, T006]
+blocked_tasks: []
+files_changed:
+  T004:
+    - {file: core/check_coordinator.py, change_type: created, description: "Extracted ordered feature checks."}
+    - {file: core/clock_logic.py, change_type: modified, description: "Delegated check_reminders to coordinator."}
+  T005:
+    - {file: ui/event_router.py, change_type: created, description: "Extracted stable UI event route mapping."}
+    - {file: ui/main_window.py, change_type: modified, description: "Uses event router adapter."}
+  T006:
+    - {file: tests/test_check_coordinator.py, change_type: created, description: "Verified order and shared timestamp."}
+    - {file: tests/test_event_router.py, change_type: created, description: "Verified complete event mapping."}
+traceability:
+  - {requirement: REQ-005, plan_item: "2.1", task: T004, files: [core/check_coordinator.py, core/clock_logic.py], status: completed}
+  - {requirement: REQ-004, plan_item: "2.2", task: T005, files: [ui/event_router.py, ui/main_window.py], status: completed}
+protocol_violation: false
+errors: []
+warnings: []
+test_results:
+  T006:
+    command: "python -m unittest discover -s tests"
+    passed: 520
+    failed: 0
+    skipped: 2
+    failures: []

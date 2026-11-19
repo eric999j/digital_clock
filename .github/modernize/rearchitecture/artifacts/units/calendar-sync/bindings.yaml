@@ -1,0 +1,10 @@
+unit: calendar-sync
+bindings:
+  - {type: listener, name: "CalendarSyncWindow save/test", source_loc: "ui/calendar_sync_window.py:54", target: "ClockLogic calendar settings methods", must_appear_in_target: true, notes: "Connection test runs off the tkinter thread."}
+  - {type: convention, name: "background calendar-sync thread", source_loc: "services/calendar_sync_service.py:150", target: "CalendarSyncService._run", must_appear_in_target: true, notes: "Worker only fetches/parses and caches."}
+  - {type: listener, name: "CALENDAR_* -> app state/UI", source_loc: "ui/main_window.py:195", target: "DigitalClock calendar handlers", must_appear_in_target: true, notes: "Upcoming popup and meeting popup lifecycle."}
+runtime_config:
+  - {key: "calendar_sync.enabled", source_loc: "services/calendar_sync_service.py:90", source: code, default_value: "false", must_appear_in_target: true, notes: "Synchronization gate."}
+  - {key: "calendar_sync.ics_url", source_loc: "services/calendar_sync_service.py:100", source: code, default_value: "", must_appear_in_target: true, notes: "Private HTTPS feed URL."}
+  - {key: "calendar_sync.refresh_minutes", source_loc: "services/calendar_sync_service.py:138", source: code, default_value: "15", must_appear_in_target: true, notes: "Clamped 1..1440."}
+  - {key: "calendar_sync.lead_minutes", source_loc: "services/calendar_sync_service.py:90", source: code, default_value: "10", must_appear_in_target: true, notes: "Clamped 0..120."}

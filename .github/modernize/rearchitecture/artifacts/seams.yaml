@@ -1,0 +1,60 @@
+seams:
+  - id: "core/clock_logic.py:307"
+    description: "Freeze per-feature service APIs while extracting the check-cycle scheduler from the UI tick."
+    source: inferred
+    cut_between:
+      migrated_side: clock-shell
+      frozen_side: reminders
+    protocol_shift: null
+    frozen_side_rule: "Reminder, hourly-launch, todo, schedule, and calendar feature APIs MUST remain source-compatible during scheduler extraction."
+    bridge_points:
+      - at: "ui/main_window.py:1868 -> core/clock_logic.py:307"
+        from_form: "UI calls check_reminders(now) once per second"
+        to_form: "scheduler calls one coordinator tick with the same shared datetime"
+        mapping_rule: "Forward the same local datetime and preserve ordering: schedule, calendar, hourly launch, todo, reminders."
+        edge_cases:
+          - "A schedule source changed in this tick must be visible to later checks."
+          - "UI shutdown must cancel future ticks."
+        idempotency_retry: "Deduplication remains inside each strategy; repeated ticks in one second remain safe."
+        fallback: "If coordinator setup fails, do not partially start feature services."
+        must_preserve: true
+  - id: "services/config_service.py:168"
+    description: "Freeze settings-file format while introducing slice-oriented mutation ownership."
+    source: inferred
+    cut_between:
+      migrated_side: appearance-settings
+      frozen_side: clock-shell
+    protocol_shift:
+      {from: "full dictionary save", to: "slice-aware repository update"}
+    frozen_side_rule: "The settings JSON schema, atomic replacement, cache behavior, and legacy readers MUST remain unchanged."
+    bridge_points:
+      - at: "ClockLogic.schedule_save and service save_config call sites"
+        from_form: "Each caller loads a full dict, mutates it, and saves the full dict."
+        to_form: "Slice update adapter merges a typed mutation into latest state and schedules one full save."
+        mapping_rule: "Map each mutation path to one explicit top-level section; merge against latest config at commit time."
+        edge_cases:
+          - "A pending UI appearance change must not be overwritten by an immediate service write."
+          - "Deletion of legacy keys must not be mistaken for stale data."
+        idempotency_retry: "The same update with equal value is a no-op; failed save retains the latest in-memory pending state for an explicit retry."
+        fallback: "Keep the old full-save adapter until all slice writers are covered."
+        must_preserve: true
+  - id: "core/clock_logic.py:101"
+    description: "Freeze external Events values while replacing broad observer exception swallowing with typed dispatch at a later phase."
+    source: inferred
+    cut_between:
+      migrated_side: notifications
+      frozen_side: clock-shell
+    protocol_shift:
+      {from: "string event with variadic args", to: "typed event payload adapter"}
+    frozen_side_rule: "Existing event names and positional payload ordering MUST remain consumable by current UI and services."
+    bridge_points:
+      - at: "ClockLogic.notify_observers"
+        from_form: "event: str, args: Any..."
+        to_form: "typed payload object accepted by new observers and adapted back to legacy args"
+        mapping_rule: "Use Events constants as stable keys; reconstruct positional arguments exactly as recorded in behavior contracts."
+        edge_cases:
+          - "No arguments and one-argument events must remain distinct."
+          - "Observer failure must not prevent delivery to later observers."
+        idempotency_retry: "Dispatch has no automatic retry; a failed observer must be logged with event and observer type."
+        fallback: "Route unknown payload types through the legacy variadic adapter."
+        must_preserve: true

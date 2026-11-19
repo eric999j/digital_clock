@@ -1,0 +1,25 @@
+batch_id: B03
+completed_tasks: [T007, T008, T009]
+blocked_tasks: []
+files_changed:
+  T007:
+    - {file: core/pause_policy.py, change_type: created, description: "Extracted pure pause/vacation source policy."}
+    - {file: services/pause_manager.py, change_type: modified, description: "Uses policy behind persistence compatibility adapter."}
+  T008:
+    - {file: services/todo_transfer_service.py, change_type: created, description: "Extracted todo import/export/restore."}
+    - {file: services/todo_service.py, change_type: modified, description: "Retains public transfer delegates."}
+  T009:
+    - {file: tests/test_pause_policy.py, change_type: created, description: "Added source composition regressions."}
+traceability:
+  - {requirement: REQ-006, plan_item: "3.1", task: T007, files: [core/pause_policy.py, services/pause_manager.py], status: completed}
+  - {requirement: REQ-007, plan_item: "3.2", task: T008, files: [services/todo_transfer_service.py, services/todo_service.py], status: completed}
+protocol_violation: false
+errors: []
+warnings: []
+test_results:
+  T009:
+    command: "python -m unittest discover -s tests"
+    passed: 522
+    failed: 0
+    skipped: 2
+    failures: []

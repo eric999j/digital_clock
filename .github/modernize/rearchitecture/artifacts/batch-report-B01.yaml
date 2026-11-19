@@ -1,0 +1,45 @@
+batch_id: B01
+completed_tasks: [T001, T002, T003]
+blocked_tasks: []
+files_changed:
+  T001:
+    - {file: core/clock_logic.py, change_type: modified, description: "Added recursive config patch calculation and application."}
+  T002:
+    - {file: core/clock_logic.py, change_type: modified, description: "Delayed save now merges pending leaf changes onto latest state."}
+  T003:
+    - {file: tests/test_clock_logic_observer.py, change_type: modified, description: "Added service/UI race and deletion regressions."}
+upstream_artifacts_consumed:
+  T001:
+    - {artifact: ".github/modernize/rearchitecture/artifacts/seams.yaml", used_for: "Config full-save to slice-aware transition contract."}
+    - {artifact: ".github/modernize/rearchitecture/artifacts/cross_unit_state.yaml", used_for: "Settings cache and pending-state race behavior."}
+  T002:
+    - {artifact: ".github/modernize/rearchitecture/artifacts/wire_contracts.yaml#settings-json", used_for: "Atomic schema-v1 full config save contract."}
+  T003:
+    - {artifact: ".github/modernize/rearchitecture/artifacts/units/appearance-settings/behavior.yaml", used_for: "Debounce and shutdown flush requirements."}
+evidence_mapping:
+  T001:
+    - {upstream: "cross_unit_state.yaml#app-settings-cache", output: "core/clock_logic.py#_build_config_patch", evidence: "pending config deletion and sibling preservation tests pass"}
+  T002:
+    - {upstream: "seams.yaml#config-manager bridge", output: "core/clock_logic.py#ClockLogic.schedule_save", evidence: "service update survives delayed UI flush"}
+traceability:
+  - {requirement: REQ-001, plan_item: "1.1-1.3", task: T001, files: [core/clock_logic.py, tests/test_clock_logic_observer.py], status: completed}
+  - {requirement: REQ-002, plan_item: "1.1-1.3", task: T002, files: [core/clock_logic.py, tests/test_clock_logic_observer.py], status: completed}
+  - {requirement: REQ-003, plan_item: "1.1-1.3", task: T003, files: [core/clock_logic.py, tests/test_clock_logic_observer.py], status: completed}
+  - {requirement: REQ-009, plan_item: "1.3", task: T003, files: [tests/test_clock_logic_observer.py], status: completed}
+protocol_violation: false
+errors: []
+warnings:
+  - "Subsequent plan phases remain pending by design."
+test_results:
+  T001:
+    command: "python -m unittest tests.test_clock_logic_observer.TestClockLogicScheduledSave"
+    passed: 4
+    failed: 0
+    skipped: 0
+    failures: []
+  T003:
+    command: "python -m unittest discover -s tests"
+    passed: 518
+    failed: 0
+    skipped: 2
+    failures: []

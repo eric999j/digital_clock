@@ -90,6 +90,7 @@ class TestClockLogicScheduledSave(unittest.TestCase):
         logic._save_delay_ms = 250
         logic._save_after_id = None
         logic._pending_config = None
+        logic._pending_config_base = None
         logic._pending_window_position = None
         return logic
 
@@ -131,6 +132,63 @@ class TestClockLogicScheduledSave(unittest.TestCase):
         logic.config_manager.load_config.assert_called_once()
         logic.config_manager.save_config.assert_called_once_with(latest_config)
         self.assertEqual(latest_config['window'], {'x': 30, 'y': 40})
+
+    def test_pending_config_preserves_intervening_service_changes(self):
+        """延遲 UI 儲存只套用自身變更，不覆蓋服務已寫入的其他欄位。"""
+        logic = self._make_logic_stub()
+        base = {
+            'appearance': {'font_size': 56, 'theme': 'blue'},
+            'reminders': [],
+            'todo': {'remind_enabled': True, 'show_in_info_bar': True},
+        }
+        logic.config_manager.load_config.side_effect = [
+            base,
+            {
+                'appearance': {'font_size': 56, 'theme': 'blue'},
+                'reminders': [{'message': 'service-added'}],
+                'todo': {'remind_enabled': False, 'show_in_info_bar': True},
+            },
+        ]
+        pending = {
+            'appearance': {'font_size': 64, 'theme': 'blue'},
+            'reminders': [],
+            'todo': {'remind_enabled': True, 'show_in_info_bar': False},
+        }
+
+        logic.schedule_save(pending)
+        logic._do_save()
+
+        saved = logic.config_manager.save_config.call_args.args[0]
+        self.assertEqual(saved['appearance']['font_size'], 64)
+        self.assertFalse(saved['todo']['show_in_info_bar'])
+        self.assertFalse(saved['todo']['remind_enabled'])
+        self.assertEqual(saved['reminders'], [{'message': 'service-added'}])
+
+    def test_pending_config_preserves_key_deletions(self):
+        """pending diff 必須記錄刪除，且不覆蓋其他服務欄位。"""
+        logic = self._make_logic_stub()
+        base = {
+            'appearance': {'theme': 'blue', 'custom': 'remove'},
+            'calendar_sync': {'enabled': False},
+        }
+        latest = {
+            'appearance': {'theme': 'green', 'custom': 'remove'},
+            'calendar_sync': {'enabled': True, 'ics_url': 'https://example.test/private.ics'},
+        }
+        logic.config_manager.load_config.side_effect = [base, latest]
+        pending = {
+            'appearance': {'theme': 'dusk'},
+            'calendar_sync': {'enabled': False},
+        }
+
+        logic.schedule_save(pending)
+        logic._do_save()
+
+        saved = logic.config_manager.save_config.call_args.args[0]
+        self.assertNotIn('custom', saved['appearance'])
+        self.assertEqual(saved['appearance']['theme'], 'dusk')
+        self.assertTrue(saved['calendar_sync']['enabled'])
+        self.assertEqual(saved['calendar_sync']['ics_url'], 'https://example.test/private.ics')
 
 
 class TestClockLogicScreenshotDispatch(unittest.TestCase):

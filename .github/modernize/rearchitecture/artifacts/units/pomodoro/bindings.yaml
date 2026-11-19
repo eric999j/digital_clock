@@ -1,0 +1,9 @@
+unit: pomodoro
+bindings:
+  - {type: listener, name: "PomodoroMenu start/pause/cancel", source_loc: "ui/menus/pomodoro_menu.py:18", target: "PomodoroService methods", must_appear_in_target: true, notes: "Menu reads service phase/paused state."}
+  - {type: listener, name: "POMODORO_* events -> clock/info/notification", source_loc: "ui/main_window.py:162", target: "DigitalClock and NotificationCenter", must_appear_in_target: true, notes: "Phase text, ticks, completion popup."}
+runtime_config:
+  - {key: "pomodoro.focus_minutes", source_loc: "services/pomodoro_service.py:79", source: code, default_value: "25", must_appear_in_target: true, notes: "Read at each phase start."}
+  - {key: "pomodoro.short_break", source_loc: "services/pomodoro_service.py:86", source: code, default_value: "5", must_appear_in_target: true, notes: "Short break duration."}
+  - {key: "pomodoro.long_break", source_loc: "services/pomodoro_service.py:86", source: code, default_value: "15", must_appear_in_target: true, notes: "Long break duration."}
+  - {key: "pomodoro.cycles_before_long_break", source_loc: "services/pomodoro_service.py:88", source: code, default_value: "4", must_appear_in_target: true, notes: "Cycle modulus; values are assumed positive."}

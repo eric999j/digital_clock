@@ -1,0 +1,6 @@
+unit: timezones
+bindings:
+  - {type: listener, name: "TimezoneMenu toggles", source_loc: "ui/menus/timezone_menu.py:22", target: "ClockLogic.toggle_timezone", must_appear_in_target: true, notes: "Menu is rebuilt from availability and selected list."}
+  - {type: convention, name: "ZoneInfo cache", source_loc: "services/timezone_service.py:49", target: "IANA zone database", must_appear_in_target: true, notes: "Availability depends on system/Windows tzdata."}
+runtime_config:
+  - {key: "timezones.selected", source_loc: "services/timezone_service.py:78", source: code, default_value: "[]", must_appear_in_target: true, notes: "At most three unique preset keys."}

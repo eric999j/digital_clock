@@ -18,10 +18,12 @@ from services.config_service import ConfigManager
 from services.countdown_service import CountdownService
 from services.log_service import LogService
 from ui.dpi import get_scale_factor, scale_px
+from ui.event_router import build_event_handlers
 from ui.menus.context_menu import ContextMenu
 from ui.menus.reminder_menu import ReminderMenu
 from ui.menus.vacation_menu import VacationMenu
 from ui.theme_utils import BUTTON_BG, BUTTON_FG, random_theme, themed_confirm, themed_error, themed_info
+from ui.window_controller import WindowController
 from ui.window_bounds import clamp_position, get_screen_bounds
 
 logger = logging.getLogger(__name__)
@@ -39,6 +41,7 @@ class DigitalClock(Observer):
         self.logic = ClockLogic(self, config_manager)
         self.logic.add_observer(self)  # 註冊為 observer
         self.config = self.logic.get_config()
+        self._window_controller = WindowController(self)
 
         # 從配置中讀取常數
         app_conf = self.config['appearance']
@@ -158,45 +161,7 @@ class DigitalClock(Observer):
 
     def _setup_event_handlers(self) -> None:
         """設定事件處理映射。"""
-        self._event_handlers = {
-            Events.POMODORO_PHASE_CHANGE: self._on_pomodoro_phase_change,
-            Events.POMODORO_TICK: self._on_pomodoro_tick,
-            Events.POMODORO_PHASE_COMPLETE: self._on_pomodoro_phase_complete,
-            Events.POMODORO_PAUSE_TOGGLED: self._on_pomodoro_pause_toggled,
-            Events.REMINDER_DUE: self._on_reminder_due,
-            Events.REMINDER_SNOOZED: self._on_reminder_snoozed,
-            Events.COUNTDOWN_STARTED: self._on_countdown_changed,
-            Events.COUNTDOWN_TICK: self._on_countdown_changed,
-            Events.COUNTDOWN_PAUSE_TOGGLED: self._on_countdown_changed,
-            Events.COUNTDOWN_CANCELLED: self._on_countdown_changed,
-            Events.COUNTDOWN_FINISHED: self._on_countdown_finished,
-            Events.TIMEZONES_UPDATED: self._on_timezones_updated,
-            Events.OPEN_COUNTDOWN_WINDOW: self._on_open_countdown_window,
-            Events.REMINDER_ADDED: self._on_reminder_added,
-            Events.REMINDER_UPDATED: self._on_reminder_updated,
-            Events.REMINDER_DELETED: self._on_reminder_deleted,
-            Events.HOURLY_WEB_UPDATED: self._on_hourly_web_updated,
-            Events.HOURLY_WEB_PAUSE_TOGGLED: self._on_hourly_web_pause_toggled,
-            Events.REMINDER_PAUSE_TOGGLED: self._on_reminder_pause_toggled,
-            Events.VACATION_TOGGLED: self._on_vacation_toggled,
-            Events.VACATION_SCHEDULE_ADDED: self._on_vacation_schedule_added,
-            Events.VACATION_SCHEDULE_DELETED: self._on_vacation_schedule_deleted,
-            Events.VACATION_SCHEDULE_UPDATED: self._on_vacation_schedule_updated,
-            Events.OPEN_REMINDER_WINDOW: self._on_open_reminder_window,
-            Events.OPEN_HOURLY_WEB_WINDOW: self._on_open_hourly_web_window,
-            Events.OPEN_VACATION_SCHEDULE_WINDOW: self._on_open_vacation_schedule_window,
-            Events.OPEN_CALENDAR_SYNC_WINDOW: self._on_open_calendar_sync_window,
-            Events.OPEN_TODO_WINDOW: self._on_open_todo_window,
-            Events.OPEN_NOTIFICATION_CENTER: self._on_open_notification_center,
-            Events.NOTIFICATIONS_CHANGED: self._on_notifications_changed,
-            Events.TODO_UPDATED: self._on_todo_updated,
-            Events.TODO_DUE: self._on_todo_due,
-            Events.TODO_REMIND_TOGGLED: self._on_todo_remind_toggled,
-            Events.CALENDAR_EVENT_UPCOMING: self._on_calendar_event_upcoming,
-            Events.CALENDAR_EVENT_STARTED: self._on_calendar_event_started,
-            Events.CALENDAR_EVENT_ENDED: self._on_calendar_event_ended,
-            Events.SCREENSHOT_TRIGGERED: self._on_screenshot_triggered,
-        }
+        self._event_handlers = build_event_handlers(self)
 
     def update(self, event: str, *args: Any, **kwargs: Any) -> None:
         """
@@ -292,15 +257,7 @@ class DigitalClock(Observer):
 
     def _on_open_countdown_window(self, *args) -> None:
         """開啟自訂倒數視窗。"""
-        from ui.countdown_window import CountdownWindow
-
-        def open_window() -> None:
-            try:
-                CountdownWindow(self.root, self.logic.start_countdown, self._get_current_theme())
-            except Exception as e:
-                logger.error("Error opening countdown window: %s", e)
-
-        self.root.after_idle(open_window)
+        self._get_window_controller().open_countdown()
 
     def _on_screenshot_triggered(self, *args: Any) -> None:
         """截圖時暫時隱藏時鐘，並在設定時間後恢復。"""
@@ -415,39 +372,11 @@ class DigitalClock(Observer):
 
     def _on_open_reminder_window(self, reminder_to_edit: dict[str, Any] | None = None, *args) -> None:
         """開啟設定提醒的視窗。"""
-        from ui.reminder_window import ReminderWindow
-
-        def open_window() -> None:
-            try:
-                # 先從記憶體取 theme，避免磁碟讀取覆蓋掉尚未 flush 的主題切換
-                theme = self._get_current_theme()
-                geometry = self.config['ui_behavior']['reminder_window_geometry']
-                ReminderWindow(self.root, self.logic.add_reminder, theme, reminder_to_edit, geometry=geometry)
-            except Exception as e:
-                logger.error("Error opening reminder window: %s", e)
-
-        self.root.after_idle(open_window)
+        self._get_window_controller().open_reminder(reminder_to_edit)
 
     def _on_open_hourly_web_window(self, *args) -> None:
         """開啟整點啟動設定視窗。"""
-        from ui.hourly_web_window import HourlyWebWindow
-
-        def open_window() -> None:
-            try:
-                # 主題以「當前記憶體中已套用的主題」為準，避免磁碟版本尚未 flush 造成不一致
-                theme = self._get_current_theme()
-                fresh = self.logic.get_config()
-                # 只更新非主題類欄位（提醒清單、整點網頁規則等會由 service 直接寫盤）
-                self.config['hourly_web_reminder'] = fresh.get('hourly_web_reminder', {})
-                self.config['reminders'] = fresh.get('reminders', [])
-                self.config['vacation_schedules'] = fresh.get('vacation_schedules', [])
-                current_config = self.config['hourly_web_reminder']
-                geometry = self.config['ui_behavior']['hourly_web_window_geometry']
-                HourlyWebWindow(self.root, self.logic.update_hourly_web_reminder, theme, current_config, geometry=geometry)
-            except Exception as e:
-                logger.error("Error opening hourly web window: %s", e)
-
-        self.root.after_idle(open_window)
+        self._get_window_controller().open_hourly()
 
     def _live_todo_window(self) -> tk.Toplevel | None:
         """回傳仍存在的待辦視窗，否則 None。"""
@@ -467,24 +396,7 @@ class DigitalClock(Observer):
 
     def _on_open_notification_center(self, *args) -> None:
         """開啟通知中心；已開啟時只帶到前景。"""
-        from ui.notification_window import NotificationWindow
-
-        def open_window() -> None:
-            try:
-                existing = self._live_notification_window()
-                if existing is not None:
-                    existing.deiconify()
-                    existing.lift()
-                    existing.refresh()
-                    self.logic.notification_center.mark_all_read()
-                    return
-                self._notification_window = NotificationWindow(
-                    self.root, self.logic.notification_center, self._get_current_theme(),
-                )
-            except Exception as e:
-                logger.error("Error opening notification center: %s", e)
-
-        self.root.after_idle(open_window)
+        self._get_window_controller().open_notification_center()
 
     def _on_notifications_changed(self, *args) -> None:
         """通知清單變動：同步開啟中的視窗。"""
@@ -494,25 +406,7 @@ class DigitalClock(Observer):
 
     def _on_open_todo_window(self, *args) -> None:
         """開啟待辦事項視窗；已開啟時只帶到前景。"""
-        from ui.todo_window import TodoWindow
-
-        def open_window() -> None:
-            try:
-                existing = self._live_todo_window()
-                if existing is not None:
-                    existing.deiconify()
-                    existing.lift()
-                    existing.focus_force()
-                    return
-                geometry = self.config['ui_behavior'].get('todo_window_geometry', '760x560')
-                self._todo_window = TodoWindow(
-                    self.root, self.logic.todo_service, self._get_current_theme(),
-                    geometry=geometry, on_close=self._save_todo_window_geometry,
-                )
-            except Exception as e:
-                logger.error("Error opening todo window: %s", e)
-
-        self.root.after_idle(open_window)
+        self._get_window_controller().open_todo()
 
     def _save_todo_window_geometry(self, size: str) -> None:
         """待辦視窗關閉時記住視窗大小。"""
@@ -569,40 +463,19 @@ class DigitalClock(Observer):
         self, schedule_to_edit: dict[str, Any] | None = None, *args
     ) -> None:
         """開啟新增或編輯休假排程視窗。"""
-        from ui.vacation_schedule_window import VacationScheduleWindow
-
-        def open_window() -> None:
-            try:
-                theme = self._get_current_theme()
-                VacationScheduleWindow(
-                    self.root,
-                    self.logic.add_vacation_schedule,
-                    theme,
-                    schedule_to_edit=schedule_to_edit,
-                    update_callback=self.logic.update_vacation_schedule,
-                )
-            except Exception as e:
-                logger.error("Error opening vacation schedule window: %s", e)
-
-        self.root.after_idle(open_window)
+        self._get_window_controller().open_vacation_schedule(schedule_to_edit)
 
     def _on_open_calendar_sync_window(self, *args) -> None:
         """開啟行事曆同步設定視窗。"""
-        from ui.calendar_sync_window import CalendarSyncWindow
+        self._get_window_controller().open_calendar_sync()
 
-        def open_window() -> None:
-            try:
-                CalendarSyncWindow(
-                    self.root,
-                    self.logic.get_calendar_sync_settings(),
-                    self._save_calendar_sync_settings,
-                    self.logic.test_calendar_connection,
-                    self._get_current_theme(),
-                )
-            except Exception as e:
-                logger.error("Error opening calendar sync window: %s", e)
-
-        self.root.after_idle(open_window)
+    def _get_window_controller(self) -> WindowController:
+        """取得功能視窗控制器，支援未執行完整初始化的測試替身。"""
+        controller = getattr(self, '_window_controller', None)
+        if controller is None:
+            controller = WindowController(self)
+            self._window_controller = controller
+        return controller
 
     def _save_calendar_sync_settings(
         self, enabled: bool, ics_url: str, refresh_minutes: int, lead_minutes: int

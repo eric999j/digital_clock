@@ -1,0 +1,11 @@
+unit: reminders
+commit: false
+candidate_splits:
+  - id: "services/reminder_service.py:35-167"
+    drivers: [concern_split, data_ownership_split]
+    rationale: "Reminder CRUD persistence and time-trigger orchestration have different callers and failure semantics."
+    source_slice: {file: services/reminder_service.py, lines: [35, 167]}
+  - id: "ui/reminder_window.py:61-306"
+    drivers: [concern_split]
+    rationale: "Form validation and recurring/one-off input transformation can be isolated from the service API."
+    source_slice: {file: ui/reminder_window.py, lines: [61, 306]}

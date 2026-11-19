@@ -1,0 +1,7 @@
+unit: timezones
+commit: false
+candidate_splits:
+  - id: "services/timezone_service.py:74-145"
+    drivers: [data_ownership_split, concern_split]
+    rationale: "Selection persistence and pure zone-time conversion can be separated without changing display behavior."
+    source_slice: {file: services/timezone_service.py, lines: [74, 145]}

@@ -1,0 +1,11 @@
+unit: vacation-mode
+commit: false
+candidate_splits:
+  - id: "services/pause_manager.py:35-192"
+    drivers: [data_ownership_split, concern_split]
+    rationale: "Source-set transition policy and legacy/config serialization should not be coupled to one persistence object."
+    source_slice: {file: services/pause_manager.py, lines: [35, 192]}
+  - id: "services/vacation_schedule_service.py:49-210"
+    drivers: [lifecycle_split, concern_split]
+    rationale: "Schedule CRUD and tick-time source acquisition/removal have distinct external triggers."
+    source_slice: {file: services/vacation_schedule_service.py, lines: [49, 210]}

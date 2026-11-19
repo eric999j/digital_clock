@@ -1,0 +1,19 @@
+unit: appearance-settings
+side_effects:
+  - {source_loc: "ui/main_window.py:1051", effect: "Applies font/time/opacity/radius mutations immediately and schedules debounced config save.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:1253", effect: "Redraws clock, menus, info band, live todo/notification windows, and may persist the theme.", must_preserve: true}
+  - {source_loc: "services/log_service.py:48", effect: "Rotates/clears log when due and persists last-cleared timestamp.", must_preserve: true}
+branches:
+  - {source_loc: "ui/main_window.py:1089", condition: "Time/date/font/radius format changes.", behavior: "Recompute window geometry and redraw only affected view state.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:1193", condition: "The active theme is deleted.", behavior: "Switch to another theme; generate a random theme if none remain.", must_preserve: true}
+  - {source_loc: "ui/window_bounds.py:1", condition: "Saved or dragged position is outside visible screens.", behavior: "Clamp it into current screen bounds.", must_preserve: true}
+error_paths:
+  - {source_loc: "ui/main_window.py:1144", trigger: "Log cleanup raises OSError.", outcome: "Display themed error or log automatic-cleanup failure.", contract: "Appearance save remains independent.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:1193", trigger: "Custom theme name is invalid/duplicate.", outcome: "Reject with ValueError and keep dialog open.", contract: "", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "ui/main_window.py:1153"
+    scope: "In-memory config mutation precedes debounced full-config persistence; shutdown flush is required."
+    isolation: "All view mutation occurs on tkinter main thread."
+    must_preserve: true

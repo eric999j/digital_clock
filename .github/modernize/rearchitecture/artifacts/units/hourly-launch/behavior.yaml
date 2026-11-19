@@ -1,0 +1,22 @@
+unit: hourly-launch
+side_effects:
+  - {source_loc: "services/hourly_web_service.py:46", effect: "Persists rules and mirrors the first URL rule into legacy fields.", must_preserve: true}
+  - {source_loc: "services/hourly_web_service.py:73", effect: "Runs enabled startup rules once when the application starts.", must_preserve: true}
+  - {source_loc: "services/hourly_web_service.py:123", effect: "Opens HTTP(S) URLs in a browser and emits HOURLY_WEB_DUE.", must_preserve: true}
+  - {source_loc: "services/hourly_web_service.py:135", effect: "Validates and starts a program without a shell or wait.", must_preserve: true}
+branches:
+  - {source_loc: "strategies/hourly_web_strategy.py:16", condition: "Minute is 0 or 1, hour/day/rule range matches, and rule is enabled.", behavior: "Return each distinct matching target once per hour.", must_preserve: true}
+  - {source_loc: "strategies/hourly_web_strategy.py:16", condition: "Rule has weekdays.", behavior: "Rule weekdays override global work_days_only.", must_preserve: true}
+  - {source_loc: "core/launch_rules.py:66", condition: "Program rules are imported from JSON.", behavior: "Import disabled so the user must confirm before enabling.", must_preserve: true}
+  - {source_loc: "services/hourly_web_service.py:88", condition: "Vacation is active or the rule is paused.", behavior: "Do not launch.", must_preserve: true}
+error_paths:
+  - {source_loc: "services/hourly_web_service.py:123", trigger: "URL scheme is not HTTP(S).", outcome: "Refuse the launch and log a warning.", contract: "", must_preserve: true}
+  - {source_loc: "services/hourly_web_service.py:135", trigger: "Program rule validation fails or Popen fails.", outcome: "Do not execute and log explicit reason.", contract: "No shell fallback.", must_preserve: true}
+  - {source_loc: "core/task_xml_importer.py:137", trigger: "DOCTYPE or unsupported task content is encountered.", outcome: "Reject or return warnings according to importer contract.", contract: "", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/hourly_web_service.py:88"
+    scope: "Rule matching and launch calls are synchronous; Popen returns immediately and is not awaited."
+    isolation: "Single UI thread; external process is detached from the service lifetime."
+    must_preserve: true

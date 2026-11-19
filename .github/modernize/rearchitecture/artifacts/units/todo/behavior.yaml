@@ -1,0 +1,22 @@
+unit: todo
+side_effects:
+  - {source_loc: "services/todo_service.py:181", effect: "Mutates only through TodoCommand, persists immediately, updates pending count, and emits TODO_UPDATED.", must_preserve: true}
+  - {source_loc: "services/todo_service.py:250", effect: "Imports tasks at root, regenerating colliding ids, and records an undoable command.", must_preserve: true}
+  - {source_loc: "services/todo_service.py:298", effect: "Replaces the current tree from JSON backup and supports undo.", must_preserve: true}
+  - {source_loc: "services/todo_store.py:143", effect: "Atomically saves todos; corrupt loads are moved to .bak.", must_preserve: true}
+branches:
+  - {source_loc: "core/todo_commands.py:201", condition: "A done toggle selects a parent and descendants.", behavior: "Only the ancestor is targeted; descendants receive state transitively.", must_preserve: true}
+  - {source_loc: "core/todo_commands.py:230", condition: "Drop would move a task into itself/descendant.", behavior: "Reject the move without mutation.", must_preserve: true}
+  - {source_loc: "services/todo_store.py:108", condition: "Stored todo version is newer than supported.", behavior: "Load an empty runtime view and do not overwrite the newer file.", must_preserve: true}
+  - {source_loc: "strategies/todo_due_strategy.py:16", condition: "Minute 0/1, configured hour/day, unfinished task due today/earlier and started.", behavior: "Emit sorted overdue/today summaries once per hour.", must_preserve: true}
+error_paths:
+  - {source_loc: "services/todo_service.py:250", trigger: "Import content is invalid or unreadable.", outcome: "Propagate ValueError/OSError to the UI for a themed error.", contract: "No partial tree mutation occurs before the command.", must_preserve: true}
+  - {source_loc: "services/todo_service.py:298", trigger: "Restore receives Markdown or newer JSON.", outcome: "Reject with ValueError and preserve current data.", contract: "", must_preserve: true}
+  - {source_loc: "services/todo_store.py:143", trigger: "Atomic write fails.", outcome: "Return a user-visible last_message and leave temp cleanup attempted.", contract: "", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/todo_service.py:181"
+    scope: "Command execute plus immediate atomic save and event emission."
+    isolation: "Single service tree owner; no cross-thread access."
+    must_preserve: true

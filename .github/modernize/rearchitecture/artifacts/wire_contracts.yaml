@@ -1,0 +1,102 @@
+contracts:
+  - name: settings-json
+    unit: global
+    type: file
+    stability: frozen
+    source_loc: "services/config_service.py:168"
+    contract:
+      method: atomic JSON replace
+      path: "~/.digital_clock/config.json"
+      request: "Full merged configuration dictionary"
+      response: "Schema version 1 JSON object"
+      error: "Load errors fall back to defaults; save errors are logged"
+      auth: "owner-only file permissions where supported"
+    target_contract:
+      method: "load/save a schema-v1 JSON configuration dictionary"
+      notes: "Preserve recursive defaults, migration, atomic replace, and cache freshness."
+    semantic_divergence:
+      - {field: read_only, issue: "A read-only result is a live cache reference and must never be mutated.", source_loc: "services/config_service.py:203"}
+  - name: todos-json
+    unit: todo
+    type: file
+    stability: frozen
+    source_loc: "services/todo_store.py:97"
+    contract:
+      method: atomic JSON replace
+      path: "~/.digital_clock/todos.json"
+      request: "version=1 plus tasks[] containing recursive TodoTask objects"
+      response: "Task list loaded or a user-visible recovery message"
+      error: "Corrupt file renamed to todos.json.bak; newer version is not overwritten"
+      auth: "owner-only file permissions where supported"
+    target_contract:
+      method: "load/save recursive tasks with version 1"
+      notes: "Preserve backup recovery, UUID conflict handling, and owner permissions."
+    semantic_divergence:
+      - {field: children, issue: "Tree hierarchy is persisted recursively, not as flat parent-id rows.", source_loc: "core/todo_task.py:110"}
+  - name: outlook-ics-feed
+    unit: calendar-sync
+    type: sdk
+    stability: frozen
+    source_loc: "services/calendar_sync_service.py:189"
+    contract:
+      method: GET
+      path: "https ICS URL (webcal normalized to https)"
+      request: "No body; User-Agent DigitalClock/1.0; 20-second timeout; 5 MiB limit"
+      response: "RFC 5545 calendar bytes parsed into local-naive start/end/summary intervals"
+      error: "Network/parse failures retain prior in-memory event cache"
+      auth: "URL itself may contain a private secret"
+    target_contract:
+      method: "fetch_events(url, now=None) -> list[dict]"
+      notes: "Keep HTTPS-only validation, bounded read, recurring expansion, and secret-safe logging."
+    semantic_divergence:
+      - {field: datetimes, issue: "Aware ICS timestamps are converted to local naive datetimes before strategy checks.", source_loc: "services/calendar_sync_service.py:39"}
+  - name: browser-launch
+    unit: hourly-launch
+    type: sdk
+    stability: must_preserve
+    source_loc: "services/hourly_web_service.py:123"
+    contract:
+      method: webbrowser.open
+      path: "HTTP(S) URL"
+      request: "new=2"
+      response: "No application-level response"
+      error: "Unsafe URL or open exception is logged and skipped"
+      auth: none
+    target_contract:
+      method: "open an HTTP(S) URL in a new browser tab where supported"
+      notes: "Do not allow unsupported schemes."
+    semantic_divergence: []
+  - name: program-launch
+    unit: hourly-launch
+    type: sdk
+    stability: must_preserve
+    source_loc: "core/program_launcher.py:30"
+    contract:
+      method: subprocess.Popen
+      path: "resolved local executable"
+      request: "command, arguments, working directory; shell disabled"
+      response: "returns immediately"
+      error: "LaunchError for OSError or unsafe/missing configuration"
+      auth: current user
+    target_contract:
+      method: "launch_program(command, arguments='', working_dir='') -> None"
+      notes: "Preserve no-shell, detached wait-free behavior and Windows argument quoting."
+    semantic_divergence:
+      - {field: arguments, issue: "Windows uses a command-line string; POSIX uses shlex tokenization.", source_loc: "core/program_launcher.py:22"}
+  - name: keyboard-listener
+    unit: clock-shell
+    type: sdk
+    stability: must_preserve
+    source_loc: "services/keyboard_service.py:68"
+    contract:
+      method: global keyboard listener
+      path: "PrtScn and configured modifier combination"
+      request: "key press/release events"
+      response: "screenshot callback; no key data persistence"
+      error: "Unmapped keys are ignored"
+      auth: OS accessibility permissions
+    target_contract:
+      method: "background listener emits a binary screenshot-trigger signal"
+      notes: "Marshal UI response to the tkinter main thread; do not log or persist key content."
+    semantic_divergence:
+      - {field: left-right modifiers, issue: "Left and right variants share one logical key family.", source_loc: "services/keyboard_service.py:105"}

@@ -1,0 +1,9 @@
+unit: hourly-launch
+bindings:
+  - {type: listener, name: "HourlyWebWindow submit/import/drop", source_loc: "ui/hourly_web_window.py:99", target: "HourlyWebService.update_config and launch-rule helpers", must_appear_in_target: true, notes: "Settings save, immediate tests, XML and JSON imports."}
+  - {type: convention, name: "startup trigger", source_loc: "services/hourly_web_service.py:73", target: "rule.trigger == startup", must_appear_in_target: true, notes: "Runs at application startup."}
+  - {type: xml-config, name: "Windows Task Scheduler Exec/Triggers", source_loc: "core/task_xml_importer.py:137", target: "Hourly launch rule dictionaries", must_appear_in_target: true, notes: "Rejects DOCTYPE and translates supported actions."}
+runtime_config:
+  - {key: "hourly_web_reminder.url_rules", source_loc: "strategies/hourly_web_strategy.py:37", source: code, default_value: "[]", must_appear_in_target: true, notes: "URL/program and startup rules."}
+  - {key: "hourly_web_reminder.work_days_only", source_loc: "strategies/hourly_web_strategy.py:36", source: code, default_value: "true", must_appear_in_target: true, notes: "Global weekday fallback."}
+  - {key: "hourly_web_reminder.paused", source_loc: "services/pause_manager.py:85", source: code, default_value: "false", must_appear_in_target: true, notes: "Legacy projection of pause sources."}

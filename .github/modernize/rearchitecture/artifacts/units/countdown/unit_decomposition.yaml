@@ -1,0 +1,7 @@
+unit: countdown
+commit: false
+candidate_splits:
+  - id: "services/countdown_service.py:27-155"
+    drivers: [concern_split]
+    rationale: "Timer state machine and countdown display formatting are separable, with distinct test and reuse concerns."
+    source_slice: {file: services/countdown_service.py, lines: [27, 155]}

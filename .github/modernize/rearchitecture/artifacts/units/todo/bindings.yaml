@@ -1,0 +1,10 @@
+unit: todo
+bindings:
+  - {type: listener, name: "TodoWindow mouse/keyboard commands", source_loc: "ui/todo_window.py:226", target: "TodoService public methods", must_appear_in_target: true, notes: "Coordinates tree mutation, import/export, undo/redo, and drag semantics."}
+  - {type: convention, name: "TodoCommand polymorphism", source_loc: "core/todo_commands.py:29", target: "TodoService._run", must_appear_in_target: true, notes: "False means no history entry; redo reruns execute."}
+  - {type: listener, name: "TODO_UPDATED/TODO_DUE", source_loc: "ui/main_window.py:192", target: "info band and due popup", must_appear_in_target: true, notes: "Pending count and summarized task due payload."}
+runtime_config:
+  - {key: "todo.remind_enabled", source_loc: "services/todo_service.py:332", source: code, default_value: "true", must_appear_in_target: true, notes: "Hourly due popup switch."}
+  - {key: "todo.start_hour", source_loc: "strategies/todo_due_strategy.py:35", source: code, default_value: "9", must_appear_in_target: true, notes: "Inclusive reminder start hour."}
+  - {key: "todo.end_hour", source_loc: "strategies/todo_due_strategy.py:35", source: code, default_value: "17", must_appear_in_target: true, notes: "Inclusive reminder end hour."}
+  - {key: "todo.show_in_info_bar", source_loc: "ui/main_window.py:1775", source: code, default_value: "true", must_appear_in_target: true, notes: "Pending task count visibility."}

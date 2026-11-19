@@ -1,0 +1,24 @@
+batch_id: B04
+completed_tasks: [T010, T011, T012]
+blocked_tasks: []
+files_changed:
+  T010:
+    - {file: ui/window_controller.py, change_type: created, description: "Extracted feature window construction and singleton behavior."}
+  T011:
+    - {file: ui/main_window.py, change_type: modified, description: "Preserved window-opening methods as delegates."}
+  T012:
+    - {file: tests/test_window_controller.py, change_type: created, description: "Added window adapter contract coverage."}
+traceability:
+  - {requirement: REQ-004, plan_item: "4.1", task: T010, files: [ui/window_controller.py, ui/main_window.py], status: completed}
+  - {requirement: REQ-008, plan_item: "4.1", task: T011, files: [ui/main_window.py], status: completed}
+  - {requirement: REQ-009, plan_item: "4.1", task: T012, files: [tests/test_window_controller.py], status: completed}
+protocol_violation: false
+errors: []
+warnings: []
+test_results:
+  T012:
+    command: "python -m unittest discover -s tests"
+    passed: 523
+    failed: 0
+    skipped: 2
+    failures: []

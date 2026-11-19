@@ -1,0 +1,126 @@
+modules:
+  - name: clock-logic
+    kind: god-class
+    source_loc: "core/clock_logic.py:27"
+    used_by_units: [clock-shell, reminders, hourly-launch, pomodoro, countdown, todo, vacation-mode, calendar-sync, notifications, timezones, appearance-settings]
+    fields:
+      - {name: start, type: "() -> None"}
+      - {name: check_reminders, type: "(datetime | None) -> None"}
+      - {name: on_close, type: "() -> None"}
+      - {name: notify_observers, type: "(str, *Any, **Any) -> None"}
+      - {name: add_reminder, type: "(Any, str, list[str], dict | None, str) -> None"}
+      - {name: delete_reminder, type: "(dict, bool) -> None"}
+      - {name: snooze_reminder, type: "(dict, int) -> None"}
+      - {name: update_hourly_web_reminder, type: "(list[dict], bool | None) -> None"}
+      - {name: toggle_hourly_web_pause, type: "() -> None"}
+      - {name: pomodoro, type: "PomodoroService"}
+      - {name: start_countdown, type: "(int, str) -> None"}
+      - {name: toggle_countdown_pause, type: "() -> None"}
+      - {name: cancel_countdown, type: "() -> None"}
+      - {name: todo_service, type: "TodoService"}
+      - {name: open_todo_window, type: "() -> None"}
+      - {name: toggle_todo_remind, type: "() -> None"}
+      - {name: toggle_vacation, type: "() -> None"}
+      - {name: add_vacation_schedule, type: "(str, str, str) -> None"}
+      - {name: delete_vacation_schedule, type: "(dict) -> None"}
+      - {name: update_calendar_sync_settings, type: "(bool, str, int, int) -> None"}
+      - {name: test_calendar_connection, type: "(str) -> int"}
+      - {name: notification_center, type: "NotificationCenter"}
+      - {name: open_notification_center, type: "() -> None"}
+      - {name: get_zone_times, type: "(datetime | None) -> list[ZoneTime]"}
+      - {name: toggle_timezone, type: "(str) -> bool"}
+      - {name: get_timezone_choices, type: "() -> tuple[dict[str, str], list[str]]"}
+    god_class: true
+    split_candidate: true
+    migration_strategy: split
+    notes: "Mediator/service-composition, persistence debounce, command delegates, and lifecycle currently share one class."
+  - name: main-window
+    kind: god-class
+    source_loc: "ui/main_window.py:29"
+    used_by_units: [clock-shell, reminders, hourly-launch, pomodoro, countdown, todo, vacation-mode, calendar-sync, notifications, timezones, appearance-settings]
+    fields:
+      - {name: run, type: "() -> None"}
+      - {name: update_time, type: "() -> None"}
+      - {name: update, type: "(str, *Any, **Any) -> None"}
+      - {name: apply_theme, type: "(str, bool) -> None"}
+      - {name: change_font, type: "(str) -> None"}
+      - {name: change_window_alpha, type: "(bool, float) -> None"}
+    god_class: true
+    split_candidate: true
+    migration_strategy: split
+    notes: "Rendering, menus, dialogs, event translation, settings ownership, window lifecycle, and scheduling are concentrated in one controller."
+  - name: config-manager
+    kind: store
+    source_loc: "services/config_service.py:25"
+    used_by_units: [clock-shell, reminders, hourly-launch, pomodoro, todo, vacation-mode, calendar-sync, timezones, appearance-settings]
+    fields:
+      - {name: load_config, type: "(bool) -> dict[str, Any]"}
+      - {name: save_config, type: "(dict[str, Any]) -> None"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: wrap
+    notes: "Keep file contract and atomic replacement; wrap ownership so full-dict write races become explicit."
+  - name: pause-manager
+    kind: store
+    source_loc: "services/pause_manager.py:9"
+    used_by_units: [reminders, hourly-launch, pomodoro, todo, vacation-mode, calendar-sync]
+    fields:
+      - {name: get_pause_state, type: "(str, dict | None) -> bool"}
+      - {name: set_pause_state, type: "(str, bool) -> None"}
+      - {name: set_vacation_source, type: "(str, bool) -> None"}
+      - {name: has_vacation_source, type: "(str, dict | None) -> bool"}
+      - {name: set_pomodoro_stop, type: "(Callable[[], None]) -> None"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: extract
+    notes: "Source-based state is already cohesive, but its persistence adapter should be separated from transition policy."
+  - name: events
+    kind: utility
+    source_loc: "core/events.py:4"
+    used_by_units: [clock-shell, reminders, hourly-launch, pomodoro, countdown, todo, vacation-mode, calendar-sync, notifications, timezones]
+    fields:
+      - {name: REMINDER_DUE, type: "str"}
+      - {name: REMINDER_ADDED, type: "str"}
+      - {name: HOURLY_WEB_DUE, type: "str"}
+      - {name: HOURLY_WEB_UPDATED, type: "str"}
+      - {name: POMODORO_PHASE_CHANGE, type: "str"}
+      - {name: POMODORO_PHASE_COMPLETE, type: "str"}
+      - {name: COUNTDOWN_STARTED, type: "str"}
+      - {name: COUNTDOWN_FINISHED, type: "str"}
+      - {name: TODO_UPDATED, type: "str"}
+      - {name: TODO_DUE, type: "str"}
+      - {name: VACATION_TOGGLED, type: "str"}
+      - {name: VACATION_SCHEDULE_UPDATED, type: "str"}
+      - {name: CALENDAR_EVENT_STARTED, type: "str"}
+      - {name: CALENDAR_EVENT_ENDED, type: "str"}
+      - {name: NOTIFICATION_ADDED, type: "str"}
+      - {name: NOTIFICATIONS_CHANGED, type: "str"}
+      - {name: TIMEZONES_UPDATED, type: "str"}
+      - {name: SCREENSHOT_TRIGGERED, type: "str"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: copy
+    notes: "Stable event vocabulary; future refactor should preserve names while attaching explicit payload types."
+  - name: app-state
+    kind: store
+    source_loc: "core/app_state.py:40"
+    used_by_units: [clock-shell, pomodoro, countdown, notifications]
+    fields:
+      - {name: snapshot, type: "AppStateSnapshot"}
+      - {name: is_focusing, type: "bool"}
+      - {name: is_quiet, type: "bool"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: copy
+    notes: "Event-derived immutable snapshot is a useful boundary for cross-feature state."
+  - name: popup-utils
+    kind: utility
+    source_loc: "ui/popup_utils.py:1"
+    used_by_units: [reminders, countdown, todo, vacation-mode, calendar-sync, appearance-settings]
+    fields:
+      - {name: show_reminder_popup_window, type: "Callable"}
+      - {name: show_confirm_popup_window, type: "Callable"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: wrap
+    notes: "The shared popup and Markdown renderer should remain behind one UI adapter."

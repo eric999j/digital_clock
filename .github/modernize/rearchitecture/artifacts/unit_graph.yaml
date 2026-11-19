@@ -1,0 +1,222 @@
+units:
+  - name: clock-shell
+    trigger: cli
+    trigger_detail: "python main.py; tkinter application startup, recurring tick, and shutdown"
+    source_anchors:
+      - {path: main.py, line: 31}
+    exported_signature:
+      - {method: "DigitalClock.run() -> None", source_loc: "ui/main_window.py:1900", stability: must_preserve}
+      - {method: "ClockLogic.start() -> None", source_loc: "core/clock_logic.py:112", stability: must_preserve}
+      - {method: "ClockLogic.on_close() -> None", source_loc: "core/clock_logic.py:419", stability: must_preserve}
+    dynamic_entrypoints:
+      - {target: "tkinter mainloop and WM_DELETE_WINDOW callback", mechanism: convention, source_loc: "ui/main_window.py:683"}
+    depends_on: []
+    shared_refs:
+      - {module: clock-logic, used_fields: [start, check_reminders, on_close, notify_observers]}
+      - {module: main-window, used_fields: [update_time, run, update]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: events, used_fields: [SCREENSHOT_TRIGGERED]}
+  - name: reminders
+    trigger: page
+    trigger_detail: "Context menu Reminder > add/edit/delete/pause; due reminder popup; snooze"
+    source_anchors:
+      - {path: ui/reminder_window.py, line: 11}
+      - {path: ui/menus/reminder_menu.py, line: 27}
+      - {path: services/reminder_service.py, line: 11}
+      - {path: strategies/reminder_strategy.py, line: 7}
+    exported_signature:
+      - {method: "ReminderService.add_reminder(time_data, message, weekdays, original_reminder=None, title='') -> None", source_loc: "services/reminder_service.py:35", stability: must_preserve}
+      - {method: "ReminderService.snooze_reminder(reminder, minutes, now=None) -> dict", source_loc: "services/reminder_service.py:92", stability: must_preserve}
+    dynamic_entrypoints: []
+    depends_on:
+      - {unit: notifications, via: REMINDER_DUE observer event}
+    shared_refs:
+      - {module: clock-logic, used_fields: [add_reminder, delete_reminder, snooze_reminder]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: pause-manager, used_fields: [get_pause_state]}
+      - {module: events, used_fields: [REMINDER_DUE, REMINDER_ADDED]}
+      - {module: popup-utils, used_fields: [show_reminder_popup_window, show_confirm_popup_window]}
+  - name: hourly-launch
+    trigger: page
+    trigger_detail: "Context menu Hourly launch > configure/import/export/test; hourly or startup rules"
+    source_anchors:
+      - {path: ui/hourly_web_window.py, line: 59}
+      - {path: services/hourly_web_service.py, line: 27}
+      - {path: strategies/hourly_web_strategy.py, line: 9}
+      - {path: core/launch_rules.py, line: 19}
+      - {path: core/program_launcher.py, line: 30}
+      - {path: core/program_safety.py, line: 18}
+      - {path: core/task_xml_importer.py, line: 137}
+      - {path: ui/file_drop.py, line: 9}
+    exported_signature:
+      - {method: "HourlyWebService.update_config(url_rules, work_days_only=None) -> None", source_loc: "services/hourly_web_service.py:46", stability: must_preserve}
+      - {method: "HourlyWebService.run_startup_rules(config=None) -> None", source_loc: "services/hourly_web_service.py:73", stability: must_preserve}
+    dynamic_entrypoints:
+      - {target: "program specified by launch rule", mechanism: convention, source_loc: "core/program_launcher.py:30"}
+      - {target: "Windows Task Scheduler XML actions", mechanism: xml-config, source_loc: "core/task_xml_importer.py:137"}
+    depends_on:
+      - {unit: notifications, via: HOURLY_WEB_DUE}
+    shared_refs:
+      - {module: clock-logic, used_fields: [update_hourly_web_reminder, toggle_hourly_web_pause]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: pause-manager, used_fields: [get_pause_state]}
+      - {module: events, used_fields: [HOURLY_WEB_DUE, HOURLY_WEB_UPDATED]}
+  - name: pomodoro
+    trigger: handler
+    trigger_detail: "Context menu Productivity > Pomodoro start/pause/cancel and recurring tick"
+    source_anchors:
+      - {path: ui/menus/pomodoro_menu.py, line: 9}
+      - {path: services/pomodoro_service.py, line: 8}
+      - {path: strategies/pomodoro_strategy.py, line: 6}
+    exported_signature:
+      - {method: "PomodoroService.start_focus() -> None", source_loc: "services/pomodoro_service.py:79", stability: must_preserve}
+      - {method: "PomodoroService.toggle_pause() -> None", source_loc: "services/pomodoro_service.py:72", stability: must_preserve}
+    dynamic_entrypoints: []
+    depends_on:
+      - {unit: notifications, via: POMODORO_PHASE_COMPLETE}
+    shared_refs:
+      - {module: clock-logic, used_fields: [pomodoro]}
+      - {module: config-manager, used_fields: [load_config]}
+      - {module: app-state, used_fields: [is_focusing, snapshot]}
+      - {module: pause-manager, used_fields: [set_pomodoro_stop]}
+      - {module: events, used_fields: [POMODORO_PHASE_CHANGE, POMODORO_PHASE_COMPLETE]}
+  - name: countdown
+    trigger: page
+    trigger_detail: "Context menu Productivity > Countdown quick start/custom window/pause/cancel"
+    source_anchors:
+      - {path: ui/countdown_window.py, line: 10}
+      - {path: ui/menus/countdown_menu.py, line: 14}
+      - {path: services/countdown_service.py, line: 13}
+    exported_signature:
+      - {method: "CountdownService.start(seconds, label='') -> None", source_loc: "services/countdown_service.py:66", stability: must_preserve}
+      - {method: "CountdownService.toggle_pause() -> None", source_loc: "services/countdown_service.py:103", stability: must_preserve}
+    dynamic_entrypoints: []
+    depends_on:
+      - {unit: notifications, via: COUNTDOWN_FINISHED}
+    shared_refs:
+      - {module: clock-logic, used_fields: [start_countdown, toggle_countdown_pause, cancel_countdown]}
+      - {module: app-state, used_fields: [snapshot]}
+      - {module: events, used_fields: [COUNTDOWN_STARTED, COUNTDOWN_FINISHED]}
+      - {module: popup-utils, used_fields: [show_reminder_popup_window]}
+  - name: todo
+    trigger: page
+    trigger_detail: "Context menu Todo > window; CRUD, hierarchy, drag/drop, import/export/restore, undo/redo, hourly due"
+    source_anchors:
+      - {path: ui/todo_window.py, line: 69}
+      - {path: ui/todo_edit_dialog.py, line: 13}
+      - {path: services/todo_service.py, line: 42}
+      - {path: services/todo_store.py, line: 18}
+      - {path: core/todo_task.py, line: 64}
+      - {path: core/todo_commands.py, line: 29}
+      - {path: core/todo_filter.py, line: 38}
+      - {path: strategies/todo_due_strategy.py, line: 10}
+    exported_signature:
+      - {method: "TodoService.add_task(text, parent_id=None, **fields) -> TodoTask | None", source_loc: "services/todo_service.py:204", stability: must_preserve}
+      - {method: "TodoService.move_task(task_id, target_id, position) -> bool", source_loc: "services/todo_service.py:225", stability: must_preserve}
+      - {method: "TodoService.restore_backup(path) -> int", source_loc: "services/todo_service.py:298", stability: must_preserve}
+    dynamic_entrypoints:
+      - {target: "TodoCommand subclasses", mechanism: convention, source_loc: "core/todo_commands.py:29"}
+    depends_on:
+      - {unit: notifications, via: TODO_DUE}
+      - {unit: hourly-launch, via: shared hourly pause state}
+    shared_refs:
+      - {module: clock-logic, used_fields: [todo_service, open_todo_window, toggle_todo_remind]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: pause-manager, used_fields: [get_pause_state]}
+      - {module: events, used_fields: [TODO_UPDATED, TODO_DUE]}
+      - {module: popup-utils, used_fields: [show_reminder_popup_window, show_confirm_popup_window]}
+  - name: vacation-mode
+    trigger: page
+    trigger_detail: "Manual do-not-disturb and scheduled date ranges"
+    source_anchors:
+      - {path: ui/vacation_schedule_window.py, line: 11}
+      - {path: ui/menus/vacation_menu.py, line: 27}
+      - {path: services/vacation_schedule_service.py, line: 16}
+      - {path: strategies/vacation_schedule_strategy.py, line: 17}
+    exported_signature:
+      - {method: "VacationScheduleService.add_schedule(start, end, note='') -> dict", source_loc: "services/vacation_schedule_service.py:53", stability: must_preserve}
+      - {method: "VacationScheduleService.check(now=None, config=None) -> None", source_loc: "services/vacation_schedule_service.py:142", stability: must_preserve}
+    dynamic_entrypoints: []
+    depends_on:
+      - {unit: reminders, via: pause_sources}
+      - {unit: hourly-launch, via: pause_sources}
+      - {unit: pomodoro, via: stop callback}
+    shared_refs:
+      - {module: clock-logic, used_fields: [toggle_vacation, add_vacation_schedule, delete_vacation_schedule]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: pause-manager, used_fields: [set_vacation_source, get_pause_state]}
+      - {module: events, used_fields: [VACATION_TOGGLED, VACATION_SCHEDULE_UPDATED]}
+  - name: calendar-sync
+    trigger: page
+    trigger_detail: "Calendar settings/test plus background ICS refresh and meeting-driven do-not-disturb"
+    source_anchors:
+      - {path: ui/calendar_sync_window.py, line: 11}
+      - {path: services/calendar_sync_service.py, line: 48}
+      - {path: strategies/calendar_strategy.py, line: 24}
+    exported_signature:
+      - {method: "CalendarSyncService.update_settings(enabled, ics_url, refresh_minutes, lead_minutes) -> None", source_loc: "services/calendar_sync_service.py:100", stability: must_preserve}
+      - {method: "CalendarSyncService.fetch_events(url, now=None) -> list[dict]", source_loc: "services/calendar_sync_service.py:189", stability: must_preserve}
+    dynamic_entrypoints:
+      - {target: "recurring_ical_events expansion", mechanism: convention, source_loc: "services/calendar_sync_service.py:215"}
+    depends_on:
+      - {unit: vacation-mode, via: calendar vacation source}
+      - {unit: notifications, via: CALENDAR_EVENT_UPCOMING and CALENDAR_EVENT_STARTED}
+    shared_refs:
+      - {module: clock-logic, used_fields: [update_calendar_sync_settings, test_calendar_connection]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: pause-manager, used_fields: [set_vacation_source, has_vacation_source]}
+      - {module: events, used_fields: [CALENDAR_EVENT_STARTED, CALENDAR_EVENT_ENDED]}
+  - name: notifications
+    trigger: page
+    trigger_detail: "Context menu Notification center; event-to-history projection; mark-read/clear"
+    source_anchors:
+      - {path: ui/notification_window.py, line: 27}
+      - {path: services/notification_center.py, line: 50}
+    exported_signature:
+      - {method: "NotificationCenter.items(source=None) -> list[Notification]", source_loc: "services/notification_center.py:75", stability: must_preserve}
+      - {method: "NotificationCenter.mark_all_read() -> None", source_loc: "services/notification_center.py:92", stability: must_preserve}
+    dynamic_entrypoints: []
+    depends_on:
+      - {unit: reminders, via: REMINDER_DUE}
+      - {unit: pomodoro, via: POMODORO_PHASE_COMPLETE}
+      - {unit: countdown, via: COUNTDOWN_FINISHED}
+      - {unit: todo, via: TODO_DUE}
+      - {unit: calendar-sync, via: calendar events}
+    shared_refs:
+      - {module: clock-logic, used_fields: [notification_center, open_notification_center]}
+      - {module: app-state, used_fields: [snapshot]}
+      - {module: events, used_fields: [NOTIFICATIONS_CHANGED, NOTIFICATION_ADDED]}
+  - name: timezones
+    trigger: handler
+    trigger_detail: "Clock settings > timezones; toggle selected zones and display derived times"
+    source_anchors:
+      - {path: ui/menus/timezone_menu.py, line: 11}
+      - {path: services/timezone_service.py, line: 58}
+    exported_signature:
+      - {method: "TimezoneService.toggle_zone(key) -> bool", source_loc: "services/timezone_service.py:98", stability: must_preserve}
+      - {method: "TimezoneService.get_zone_times(now=None, config=None) -> list[ZoneTime]", source_loc: "services/timezone_service.py:125", stability: must_preserve}
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - {module: clock-logic, used_fields: [get_zone_times, toggle_timezone, get_timezone_choices]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: events, used_fields: [TIMEZONES_UPDATED]}
+  - name: appearance-settings
+    trigger: page
+    trigger_detail: "Clock settings: fonts, time/date format, theme, opacity, radius, logs, display bounds"
+    source_anchors:
+      - {path: ui/theme_utils.py, line: 1}
+      - {path: ui/dpi.py, line: 1}
+      - {path: ui/window_bounds.py, line: 1}
+      - {path: services/log_service.py, line: 15}
+    exported_signature:
+      - {method: "DigitalClock.apply_theme(theme_key, save=True) -> None", source_loc: "ui/main_window.py:1253", stability: must_preserve}
+      - {method: "LogService.clear_if_due(now=None) -> bool", source_loc: "services/log_service.py:48", stability: must_preserve}
+    dynamic_entrypoints: []
+    depends_on:
+      - {unit: notifications, via: themed notification windows}
+      - {unit: todo, via: live todo window theme application}
+    shared_refs:
+      - {module: main-window, used_fields: [apply_theme, change_font, change_window_alpha]}
+      - {module: config-manager, used_fields: [load_config, save_config]}
+      - {module: popup-utils, used_fields: [show_reminder_popup_window, show_confirm_popup_window]}

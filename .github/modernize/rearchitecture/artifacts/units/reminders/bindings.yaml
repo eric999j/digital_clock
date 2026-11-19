@@ -1,0 +1,8 @@
+unit: reminders
+bindings:
+  - {type: listener, name: "ReminderMenu commands", source_loc: "ui/menus/reminder_menu.py:36", target: "DigitalClock / ClockLogic reminder methods", must_appear_in_target: true, notes: "Add, edit, delete, and pause are UI entrypoints."}
+  - {type: listener, name: "REMINDER_DUE -> popup", source_loc: "ui/main_window.py:166", target: "DigitalClock._on_reminder_due", must_appear_in_target: true, notes: "Payload is reminder dict."}
+runtime_config:
+  - {key: "reminders", source_loc: "services/reminder_service.py:133", source: code, default_value: "[]", must_appear_in_target: true, notes: "Ordered reminder records."}
+  - {key: "pause_sources.reminder", source_loc: "services/pause_manager.py:35", source: code, default_value: "[]", must_appear_in_target: true, notes: "Manual/vacation source set."}
+  - {key: "appearance.time_formats.24h", source_loc: "services/reminder_service.py:148", source: code, default_value: "%H:%M", must_appear_in_target: true, notes: "Recurring matching format."}

@@ -1,0 +1,18 @@
+unit: pomodoro
+side_effects:
+  - {source_loc: "services/pomodoro_service.py:79", effect: "Starts focus using the latest configured duration and emits phase change.", must_preserve: true}
+  - {source_loc: "services/pomodoro_service.py:97", effect: "Ticks remaining time and advances at most one phase when complete.", must_preserve: true}
+  - {source_loc: "services/pomodoro_service.py:122", effect: "Stops to IDLE and emits a phase change.", must_preserve: true}
+branches:
+  - {source_loc: "services/pomodoro_service.py:113", condition: "FOCUS completes.", behavior: "Increment cycle and choose short or long break based on configured cycle count.", must_preserve: true}
+  - {source_loc: "services/pomodoro_service.py:113", condition: "A break completes.", behavior: "Start the next focus phase.", must_preserve: true}
+  - {source_loc: "services/pomodoro_service.py:57", condition: "Already idle or paused.", behavior: "Pause is a no-op.", must_preserve: true}
+error_paths:
+  - {source_loc: "services/pomodoro_service.py:79", trigger: "Configured phase duration keys are missing.", outcome: "The caller sees an exception; no silent default is introduced.", contract: "Config merge is expected to provide pomodoro keys.", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/pomodoro_service.py:97"
+    scope: "Monotonic deadline calculation, phase transition, and callback emissions are synchronous."
+    isolation: "No worker thread."
+    must_preserve: true

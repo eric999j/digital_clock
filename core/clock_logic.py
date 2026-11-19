@@ -1,4 +1,5 @@
 """時鐘業務邏輯管理，包括設定、提醒和鍵盤監聽。"""
+import copy
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -6,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 logger = logging.getLogger(__name__)
 
 from core.app_state import AppState
+from core.check_coordinator import CheckCoordinator
 from core.events import Events
 from core.observer import Observer
 from services.calendar_sync_service import CalendarSyncService
@@ -24,6 +26,49 @@ from services.vacation_schedule_service import VacationScheduleService
 if TYPE_CHECKING:
     import tkinter as tk
 
+
+def _build_config_patch(
+    original: dict[str, Any],
+    updated: dict[str, Any],
+) -> dict[str, tuple[str, Any]]:
+    """建立遞迴設定變更集，保留新增、取代與刪除語意。"""
+    patch: dict[str, tuple[str, Any]] = {}
+    for key in original.keys() - updated.keys():
+        patch[key] = ('delete', None)
+    for key, value in updated.items():
+        if key not in original:
+            patch[key] = ('replace', copy.deepcopy(value))
+            continue
+        previous = original[key]
+        if isinstance(previous, dict) and isinstance(value, dict):
+            nested = _build_config_patch(previous, value)
+            if nested:
+                patch[key] = ('merge', nested)
+        elif previous != value:
+            patch[key] = ('replace', copy.deepcopy(value))
+    return patch
+
+
+def _apply_config_patch(
+    latest: dict[str, Any],
+    patch: dict[str, tuple[str, Any]],
+) -> dict[str, Any]:
+    """將設定變更集套用至最新完整設定，不覆蓋無關欄位。"""
+    merged = copy.deepcopy(latest)
+    for key, (operation, value) in patch.items():
+        if operation == 'delete':
+            merged.pop(key, None)
+        elif operation == 'merge':
+            current = merged.get(key)
+            base = current if isinstance(current, dict) else {}
+            merged[key] = _apply_config_patch(base, value)
+        elif operation == 'replace':
+            merged[key] = copy.deepcopy(value)
+        else:
+            raise ValueError(f"Unknown config patch operation: {operation}")
+    return merged
+
+
 class ClockLogic:
     """管理時鐘的業務邏輯，包括設定、提醒和鍵盤監聽。僅負責通知事件，UI 由 Observer 處理。"""
 
@@ -41,6 +86,7 @@ class ClockLogic:
         self._save_delay_ms = self._resolve_save_delay_ms(self.config)
         self._save_after_id: str | None = None
         self._pending_config: dict[str, Any] | None = None
+        self._pending_config_base: dict[str, Any] | None = None
         self._pending_window_position: tuple[int, int] | None = None
         self._observers: list[Observer] = []
 
@@ -77,6 +123,15 @@ class ClockLogic:
         self.calendar_sync_service = CalendarSyncService(
             config_manager,
             self.notify_observers,
+            self.pause_manager,
+        )
+        self.check_coordinator = CheckCoordinator(
+            config_manager,
+            self.vacation_schedule_service,
+            self.calendar_sync_service,
+            self.hourly_service,
+            self.todo_service,
+            self.reminder_service,
             self.pause_manager,
         )
 
@@ -154,11 +209,13 @@ class ClockLogic:
             config: 要儲存的設定字典；若為 None 則從磁碟重新載入後儲存。
         """
         if config is not None:
-            self._pending_config = config
+            if self._pending_config_base is None:
+                self._pending_config_base = self.config_manager.load_config()
+            self._pending_config = copy.deepcopy(config)
             if self._pending_window_position is not None:
                 x, y = self._pending_window_position
-                config.setdefault('window', {})['x'] = x
-                config['window']['y'] = y
+                self._pending_config.setdefault('window', {})['x'] = x
+                self._pending_config['window']['y'] = y
         self._schedule_pending_save()
 
     def schedule_window_position_save(self, x: int, y: int) -> None:
@@ -202,8 +259,13 @@ class ClockLogic:
         pending = self._pending_config
         pending_window_position = self._pending_window_position
         if pending is not None:
-            self.config_manager.save_config(pending)
+            latest = self.get_config()
+            base = self._pending_config_base or latest
+            self.config_manager.save_config(
+                _apply_config_patch(latest, _build_config_patch(base, pending))
+            )
             self._pending_config = None
+            self._pending_config_base = None
             self._pending_window_position = None
         elif pending_window_position is not None:
             config = self.get_config()
@@ -305,30 +367,8 @@ class ClockLogic:
         return self.timezone_service.available_zones(), self.timezone_service.get_selected()
 
     def check_reminders(self, now: datetime | None = None) -> None:
-        """
-        檢查所有提醒類型。
-
-        Args:
-            now: 可選的當前時間，用於同一個 tick 共享時間快照
-        """
-        check_time = now or datetime.now()
-
-        # 勿擾來源（排程／行事曆）須先判斷，後續服務才會讀到最新的暫停狀態
-        self.vacation_schedule_service.check(
-            now=check_time, config=self.config_manager.load_config(read_only=True)
-        )
-        self.calendar_sync_service.check(now=check_time)
-
-        # 熱路徑：使用唯讀快取避免每秒 deepcopy 整份 config
-        config_snapshot = self.config_manager.load_config(read_only=True)
-
-        # 整點網頁提醒
-        self.hourly_service.check(now=check_time, config=config_snapshot)
-        self.todo_service.check(now=check_time, config=config_snapshot)
-
-        # 一般提醒
-        is_paused = self.pause_manager.get_pause_state('reminder', config=config_snapshot)
-        self.reminder_service.check_reminders(is_paused, now=check_time, config=config_snapshot)
+        """相容舊呼叫介面，將每秒功能檢查委派給協調器。"""
+        self.check_coordinator.check(now)
 
     def update_hourly_web_reminder(self, url_rules: list[dict], work_days_only: bool | None = None) -> None:
         self.hourly_service.update_config(url_rules, work_days_only)

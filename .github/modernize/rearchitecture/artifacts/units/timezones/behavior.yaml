@@ -1,0 +1,16 @@
+unit: timezones
+side_effects:
+  - {source_loc: "services/timezone_service.py:98", effect: "Toggles a preset zone, persists selected list, and emits TIMEZONES_UPDATED.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:1750", effect: "Renders selected zone local times and day offsets in the info band.", must_preserve: true}
+branches:
+  - {source_loc: "services/timezone_service.py:98", condition: "Key invalid, zone database unavailable, or three zones already selected.", behavior: "Do not add; return current selected status.", must_preserve: true}
+  - {source_loc: "services/timezone_service.py:125", condition: "A selected zone cannot load.", behavior: "Omit it from rendered results and retain a warning log.", must_preserve: true}
+error_paths:
+  - {source_loc: "services/timezone_service.py:49", trigger: "IANA data is missing.", outcome: "Return None and warn; Windows users need tzdata.", contract: "", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/timezone_service.py:98"
+    scope: "Selected-list validation, save, and event emission."
+    isolation: "ZoneInfo loading cache is synchronous."
+    must_preserve: true

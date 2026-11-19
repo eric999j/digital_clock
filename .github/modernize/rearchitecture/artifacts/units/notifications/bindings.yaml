@@ -1,0 +1,6 @@
+unit: notifications
+bindings:
+  - {type: listener, name: "NotificationCenter Observer", source_loc: "services/notification_center.py:109", target: "Feature completion/due events", must_appear_in_target: true, notes: "Registered before the UI observer."}
+  - {type: listener, name: "NotificationWindow clear/mark-read", source_loc: "ui/notification_window.py:49", target: "NotificationCenter", must_appear_in_target: true, notes: "Memory-only history controls."}
+runtime_config: []
+reason: "Notification history is intentionally bounded in memory and has no runtime configuration."

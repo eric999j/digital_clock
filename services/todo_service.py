@@ -1,21 +1,17 @@
 """待辦事項服務：任務樹、CRUD、復原／重做、持久化與整點到期提醒。"""
 import logging
-import uuid
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from core.events import Events
-from core.file_security import restrict_to_owner
 from core.todo_commands import (
     AddTaskCommand,
     CommandHistory,
     DeleteTasksCommand,
-    ImportTasksCommand,
     MoveTaskCommand,
     RemoveLinkCommand,
-    ReplaceTasksCommand,
     TodoCommand,
     ToggleDoneCommand,
     UpdateTaskCommand,
@@ -25,13 +21,9 @@ from core.todo_filter import TodoFilter
 from core.todo_task import PRIORITIES, PRIORITY_NORMAL, TodoTask
 from services.config_service import ConfigManager
 from services.todo_store import (
-    FILE_VERSION,
     TodoStore,
-    export_json,
-    export_markdown,
-    file_version,
-    read_tasks_file,
 )
+from services.todo_transfer_service import TodoTransferService
 from strategies.todo_due_strategy import TodoDueStrategy
 
 logger = logging.getLogger(__name__)
@@ -62,6 +54,7 @@ class TodoService:
         self.tasks: list[TodoTask] = []
         self.last_message: str = ""
         self.load()
+        self.transfer = TodoTransferService(self)
 
     # ---- 載入／存檔 ----
 
@@ -248,30 +241,14 @@ class TodoService:
     # ---- 匯入／匯出／統計 ----
 
     def import_file(self, path: str | Path) -> int:
-        """
-        匯入 JSON 或 Markdown 待辦清單，附加到頂層。
-
-        Returns:
-            匯入的頂層任務數
-
-        Raises:
-            OSError: 無法讀取
-            ValueError: 格式不正確
-        """
-        imported = read_tasks_file(Path(path))
-        existing = {task.id for task in self.iter_tasks()}
-        for top in imported:
-            for task in iter_subtree(top):
-                if task.id in existing:
-                    task.id = str(uuid.uuid4())
-                existing.add(task.id)
-        return len(imported) if self._run(ImportTasksCommand(self, imported)) else 0
+        """相容既有 API，將匯入委派給檔案傳輸服務。"""
+        return self.transfer.import_file(path)
 
     def export_markdown(self) -> str:
-        return export_markdown(self.tasks)
+        return self.transfer.export_markdown()
 
     def export_json(self) -> str:
-        return export_json(self.tasks)
+        return self.transfer.export_json()
 
     def export_to_file(self, path: str | Path) -> str:
         """
@@ -284,16 +261,7 @@ class TodoService:
             OSError: 無法寫入
             ValueError: 副檔名不是 .json 或 .md
         """
-        target = Path(path)
-        suffix = target.suffix.lower()
-        if suffix == ".json":
-            target.write_text(self.export_json(), encoding="utf-8")
-            restrict_to_owner(target)  # 完整備份含所有欄位，僅限本人讀寫
-            return "json"
-        if suffix == ".md":
-            target.write_text(self.export_markdown(), encoding="utf-8")
-            return "md"
-        raise ValueError("僅支援匯出為 .json 或 .md")
+        return self.transfer.export_to_file(path)
 
     def restore_backup(self, path: str | Path) -> int:
         """
@@ -306,19 +274,7 @@ class TodoService:
             OSError: 無法讀取
             ValueError: 不是 JSON 備份、格式不正確或版本比本程式新
         """
-        source = Path(path)
-        if source.suffix.lower() != ".json":
-            raise ValueError("還原僅支援 JSON 備份；Markdown 請使用匯入")
-        if file_version(source) > FILE_VERSION:
-            raise ValueError("備份版本比本程式支援的新，請先更新程式")
-        restored = read_tasks_file(source)
-        seen: set[str] = set()
-        for top in restored:
-            for task in iter_subtree(top):
-                if task.id in seen:
-                    task.id = str(uuid.uuid4())
-                seen.add(task.id)
-        return len(restored) if self._run(ReplaceTasksCommand(self, restored)) else 0
+        return self.transfer.restore_backup(path)
 
     def stats(self) -> tuple[int, int, int]:
         """回傳 (總數, 待辦數, 完成數)。"""

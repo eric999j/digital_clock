@@ -1,0 +1,15 @@
+unit: todo
+commit: false
+candidate_splits:
+  - id: "ui/todo_window.py:128-705"
+    drivers: [concern_split, execution_model_split]
+    rationale: "Tree presentation, drag/drop placement, search, command actions, and import/export dialogs have distinct interaction models."
+    source_slice: {file: ui/todo_window.py, lines: [128, 705]}
+  - id: "services/todo_service.py:80-361"
+    drivers: [data_ownership_split, concern_split]
+    rationale: "Tree query/mutation, command history, file transfer, and due policy share one service but can be independently owned."
+    source_slice: {file: services/todo_service.py, lines: [80, 361]}
+  - id: "core/todo_commands.py:89-368"
+    drivers: [reuse_split]
+    rationale: "Command classes already form a policy seam reusable behind a smaller repository interface."
+    source_slice: {file: core/todo_commands.py, lines: [89, 368]}

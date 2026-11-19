@@ -1,0 +1,20 @@
+unit: reminders
+side_effects:
+  - {source_loc: "services/reminder_service.py:35", effect: "Adds or updates a sorted reminder and persists the full settings file.", must_preserve: true}
+  - {source_loc: "services/reminder_service.py:92", effect: "Creates a one-off reminder and emits REMINDER_SNOOZED.", must_preserve: true}
+  - {source_loc: "services/reminder_service.py:133", effect: "Deletes due one-off reminders and emits REMINDER_DUE for all triggers.", must_preserve: true}
+branches:
+  - {source_loc: "strategies/reminder_strategy.py:20", condition: "A recurring reminder matches weekday and minute and the minute was not fired.", behavior: "Trigger once; retain the minute key in ReminderService.", must_preserve: true}
+  - {source_loc: "strategies/reminder_strategy.py:20", condition: "A one-off datetime is due.", behavior: "Trigger every matching check until immediately removed by the service.", must_preserve: true}
+  - {source_loc: "services/reminder_service.py:133", condition: "Pause state is true.", behavior: "No checks or popup events.", must_preserve: true}
+  - {source_loc: "services/reminder_service.py:92", condition: "Snooze minutes are outside 1..1440.", behavior: "Reject with ValueError.", must_preserve: true}
+error_paths:
+  - {source_loc: "services/reminder_service.py:169", trigger: "Stored one-off datetime cannot be parsed.", outcome: "Drop the invalid/expired item during cleanup without crashing startup.", contract: "", must_preserve: true}
+  - {source_loc: "ui/reminder_window.py:164", trigger: "Dialog input is invalid.", outcome: "Show a themed error and keep the dialog open.", contract: "No config write occurs.", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/reminder_service.py:133"
+    scope: "Trigger decision, one-off removal save, and due-event emission occur in one synchronous tick."
+    isolation: "Single tkinter thread."
+    must_preserve: true

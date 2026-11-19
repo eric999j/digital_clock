@@ -1,0 +1,8 @@
+unit: vacation-mode
+bindings:
+  - {type: listener, name: "VacationMenu manual/source commands", source_loc: "ui/menus/vacation_menu.py:36", target: "ClockLogic and PauseManager", must_appear_in_target: true, notes: "Manual toggle, schedule add/edit/delete."}
+  - {type: convention, name: "automatic schedule source", source_loc: "services/vacation_schedule_service.py:192", target: "PauseManager source 'schedule'", must_appear_in_target: true, notes: "Must not close manual/calendar sources."}
+runtime_config:
+  - {key: "vacation_schedules", source_loc: "services/vacation_schedule_service.py:49", source: code, default_value: "[]", must_appear_in_target: true, notes: "Date ranges, note, auto_started marker."}
+  - {key: "vacation_sources", source_loc: "services/pause_manager.py:68", source: code, default_value: "[]", must_appear_in_target: true, notes: "Canonical active source set."}
+  - {key: "pause_sources", source_loc: "services/pause_manager.py:35", source: code, default_value: "{reminder: [], hourly_web: []}", must_appear_in_target: true, notes: "Feature pause sources."}

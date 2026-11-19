@@ -1,0 +1,18 @@
+unit: notifications
+side_effects:
+  - {source_loc: "services/notification_center.py:84", effect: "Adds a notification, caps history with deque maxlen, and emits added/changed events.", must_preserve: true}
+  - {source_loc: "services/notification_center.py:92", effect: "Marks unread items read and emits changed only if something changed.", must_preserve: true}
+  - {source_loc: "services/notification_center.py:99", effect: "Clears history and emits changed only when nonempty.", must_preserve: true}
+branches:
+  - {source_loc: "services/notification_center.py:116", condition: "Supported completion/due/calendar event.", behavior: "Build one source-specific title/message.", must_preserve: true}
+  - {source_loc: "services/notification_center.py:109", condition: "Unknown event or notification-center event.", behavior: "Ignore to prevent recursive/self notification.", must_preserve: true}
+  - {source_loc: "services/notification_center.py:126", condition: "Todo due event contains task details.", behavior: "Store counts only, never task text.", must_preserve: true}
+error_paths:
+  - {source_loc: "ui/notification_window.py:152", trigger: "Source/event changes while the window is open.", outcome: "Refresh available rows without persistence or a modal interruption.", contract: "", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary:
+    source_loc: "services/notification_center.py:84"
+    scope: "Append plus monotonic id allocation plus change emission."
+    isolation: "Single observer dispatch thread; history remains memory-only."
+    must_preserve: true

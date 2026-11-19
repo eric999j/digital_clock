@@ -1,0 +1,34 @@
+user_intent:
+  raw_request: "專案功能流程重構優化"
+  inferred_acceptance:
+    - "Produce a source-anchored whole-project flow and coupling analysis."
+    - "Preserve existing runtime behavior during analysis."
+    - "Do not modify application code in this phase."
+  cleanup_required: false
+strategy: phased
+runtime_reachable:
+  - main.py
+  - ui/main_window.py
+  - core/clock_logic.py
+  - services/
+  - strategies/
+  - core/
+must_rewrite: []
+copy_as_is:
+  - main.py
+  - core/
+  - services/
+  - strategies/
+  - ui/
+legacy_allowed_to_remain:
+  - "All existing modules remain during the analysis-only phase."
+defer_cleanup:
+  - "Extract feature controllers from ClockLogic before removing any UI-facing delegates."
+  - "Extract rendering and preferences concerns from DigitalClock before changing event contracts."
+  - "Converge config write ownership after proving all settings mutations preserve in-memory pending state."
+  - "Remove legacy pause booleans only after a versioned migration and runtime compatibility check."
+full_rewrite_reason: null
+implementation_rule: >
+  This run is analysis-only. A later implementation plan must populate must_rewrite
+  explicitly after selecting a refactoring candidate. No source_anchor in unit_graph.yaml
+  is itself a rewrite target.

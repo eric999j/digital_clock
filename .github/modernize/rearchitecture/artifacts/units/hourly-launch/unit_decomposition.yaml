@@ -1,0 +1,11 @@
+unit: hourly-launch
+commit: false
+candidate_splits:
+  - id: "services/hourly_web_service.py:46-155"
+    drivers: [protocol_split, concern_split]
+    rationale: "Rule persistence, URL launch, and process launch have separate contracts and validation failure modes."
+    source_slice: {file: services/hourly_web_service.py, lines: [46, 155]}
+  - id: "ui/hourly_web_window.py:99-797"
+    drivers: [concern_split]
+    rationale: "Rule editor, validation, import/export, confirmation, and drop handling exceed a single UI responsibility."
+    source_slice: {file: ui/hourly_web_window.py, lines: [99, 797]}
