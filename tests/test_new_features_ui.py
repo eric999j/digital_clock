@@ -154,6 +154,46 @@ class TestMainWindowHandlers(unittest.TestCase):
 
         self.assertFalse(ui.config['todo']['remind_enabled'])
 
+    def test_calendar_event_started_closes_upcoming_popup_before_meeting_popup(self):
+        ui = self._make_ui()
+        ui.config['calendar_sync'] = {'show_in_meeting': True}
+        ui._get_current_theme = MagicMock(return_value={'bg': '#000', 'fg': '#fff'})
+        upcoming_popup = MagicMock()
+        upcoming_popup.winfo_exists.return_value = True
+        ui._calendar_popup = upcoming_popup
+
+        with patch("ui.popup_utils.show_reminder_popup_window") as show:
+            meeting_popup = MagicMock()
+            show.return_value = meeting_popup
+            ui._on_calendar_event_started("會議")
+            (scheduled,), _ = ui.root.after_idle.call_args
+            scheduled()
+
+        upcoming_popup.destroy.assert_called_once()
+        self.assertIs(ui._calendar_popup, meeting_popup)
+
+    def test_calendar_event_started_keeps_dnd_but_hides_meeting_popup(self):
+        ui = self._make_ui()
+        ui.config['calendar_sync'] = {'show_in_meeting': False}
+        upcoming_popup = MagicMock()
+        upcoming_popup.winfo_exists.return_value = True
+        ui._calendar_popup = upcoming_popup
+
+        ui._on_calendar_event_started("會議")
+
+        upcoming_popup.destroy.assert_called_once()
+        ui.root.after_idle.assert_not_called()
+
+    def test_calendar_event_started_cancels_pending_upcoming_popup(self):
+        ui = self._make_ui()
+        ui.config['calendar_sync'] = {'show_in_meeting': False}
+        ui._calendar_popup_after_id = "upcoming-after"
+
+        ui._on_calendar_event_started("會議")
+
+        ui.root.after_cancel.assert_called_once_with("upcoming-after")
+        self.assertIsNone(ui._calendar_popup_after_id)
+
     def test_timezones_updated_syncs_only_timezones_and_refreshes(self):
         ui = self._make_ui()
         ui.logic.get_config.return_value = {

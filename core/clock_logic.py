@@ -487,11 +487,16 @@ class ClockLogic:
         return self.calendar_sync_service.get_settings()
 
     def update_calendar_sync_settings(
-        self, enabled: bool, ics_url: str, refresh_minutes: int, lead_minutes: int
+        self,
+        enabled: bool,
+        ics_url: str,
+        refresh_minutes: int,
+        lead_minutes: int,
+        show_in_meeting: bool = True,
     ) -> None:
         """更新行事曆同步設定並立即重新同步。"""
         self.calendar_sync_service.update_settings(
-            enabled, ics_url, refresh_minutes, lead_minutes
+            enabled, ics_url, refresh_minutes, lead_minutes, show_in_meeting
         )
 
     def test_calendar_connection(self, ics_url: str) -> int:

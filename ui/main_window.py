@@ -481,40 +481,54 @@ class DigitalClock(Observer):
         return controller
 
     def _save_calendar_sync_settings(
-        self, enabled: bool, ics_url: str, refresh_minutes: int, lead_minutes: int
+        self,
+        enabled: bool,
+        ics_url: str,
+        refresh_minutes: int,
+        lead_minutes: int,
+        show_in_meeting: bool = True,
     ) -> None:
         """儲存行事曆同步設定，並只同步該區塊到記憶體設定，避免被延遲儲存覆蓋。"""
-        self.logic.update_calendar_sync_settings(enabled, ics_url, refresh_minutes, lead_minutes)
+        self.logic.update_calendar_sync_settings(
+            enabled, ics_url, refresh_minutes, lead_minutes, show_in_meeting
+        )
         self.config['calendar_sync'] = self.logic.get_config().get('calendar_sync', {})
 
     def _show_calendar_popup(self, message: str, title: str) -> None:
         from ui.popup_utils import show_reminder_popup_window
         theme = self._get_current_theme()
-        self.root.after_idle(lambda: show_reminder_popup_window(
-            self.root, message, theme, title=title, ok_text="確定"
-        ))
+
+        def show() -> None:
+            self._calendar_popup_after_id = None
+            self._calendar_popup = show_reminder_popup_window(
+                self.root, message, theme, title=title, ok_text="確定"
+            )
+
+        self._calendar_popup_after_id = self.root.after_idle(show)
 
     def _on_calendar_event_upcoming(self, summary: str = "", minutes: int = 0, *args) -> None:
         name = f"「{summary}」" if summary else "行事曆事件"
         self._show_calendar_popup(f"{name}約 {minutes} 分鐘後開始，將自動進入勿擾模式", "行事曆預告")
 
     def _on_calendar_event_started(self, summary: str = "", *args) -> None:
-        from ui.popup_utils import show_reminder_popup_window
         self._close_calendar_popup()
-        theme = self._get_current_theme()
-
-        def show() -> None:
-            self._calendar_popup = show_reminder_popup_window(
-                self.root, "會議中...", theme, title="行事曆", ok_text="確定"
-            )
-
-        self.root.after_idle(show)
+        if not self.config.get('calendar_sync', {}).get('show_in_meeting', True):
+            return
+        self._show_calendar_popup("會議中...", "行事曆")
 
     def _on_calendar_event_ended(self, *args) -> None:
         self._close_calendar_popup()
 
     def _close_calendar_popup(self) -> None:
-        """關閉仍存在的「會議中」視窗。"""
+        """關閉仍存在的行事曆預告或「會議中」視窗。"""
+        after_id = getattr(self, '_calendar_popup_after_id', None)
+        self._calendar_popup_after_id = None
+        if after_id is not None:
+            try:
+                self.root.after_cancel(after_id)
+            except tk.TclError:
+                logger.debug("Calendar popup scheduling already completed")
+
         popup = getattr(self, '_calendar_popup', None)
         self._calendar_popup = None
         try:

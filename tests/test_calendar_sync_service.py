@@ -139,6 +139,17 @@ class CalendarSyncServiceTests(unittest.TestCase):
         upcoming = [c for c in notify.call_args_list if c.args[0] == Events.CALENDAR_EVENT_UPCOMING]
         self.assertEqual(len(upcoming), 1)
 
+    def test_show_in_meeting_setting_defaults_true_and_can_be_disabled(self) -> None:
+        service, cfg, pause, notify = self._make()
+        cfg.data['calendar_sync'].pop('show_in_meeting', None)
+        self.assertTrue(service.get_settings()['show_in_meeting'])
+
+        service.update_settings(
+            True, "https://example.invalid/x.ics", 15, 10, False
+        )
+
+        self.assertFalse(service.get_settings()['show_in_meeting'])
+
     def test_https_only(self) -> None:
         self.assertTrue(is_valid_ics_url("https://example.invalid/a.ics"))
         self.assertFalse(is_valid_ics_url("http://example.invalid/a.ics"))

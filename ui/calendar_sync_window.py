@@ -15,18 +15,20 @@ class CalendarSyncWindow(tk.Toplevel):
         self,
         parent: tk.Tk,
         settings: dict[str, Any],
-        save_callback: Callable[[bool, str, int, int], None],
+        save_callback: Callable[[bool, str, int, int, bool], None],
         test_callback: Callable[[str], int],
         theme: dict[str, str] | None = None,
-        geometry: str = "460x270",
+        geometry: str = "460x300",
     ) -> None:
         """
         初始化行事曆同步設定視窗。
 
         Args:
             parent: 父視窗
-            settings: 目前設定 `{enabled, ics_url, refresh_minutes, lead_minutes}`
-            save_callback: 儲存回調 `(enabled, ics_url, refresh_minutes, lead_minutes)`；
+            settings: 目前設定
+                `{enabled, ics_url, refresh_minutes, lead_minutes, show_in_meeting}`
+            save_callback: 儲存回調
+                `(enabled, ics_url, refresh_minutes, lead_minutes, show_in_meeting)`；
                 輸入無效時應拋出 `ValueError`
             test_callback: 測試連線回調 `(ics_url) -> 事件數`；失敗時拋出例外
             theme: 主題配色
@@ -91,6 +93,13 @@ class CalendarSyncWindow(tk.Toplevel):
         ttk.Label(row, text="事件前預告(分，0=不預告)：", style='Calendar.TLabel').grid(
             row=0, column=2, sticky=tk.W)
         tk.Spinbox(row, from_=0, to=120, width=5, textvariable=self.lead_var).grid(row=0, column=3)
+        self.show_in_meeting_var = tk.BooleanVar(
+            value=bool(self.settings.get('show_in_meeting', True))
+        )
+        ttk.Checkbutton(
+            row, text="顯示會議中", variable=self.show_in_meeting_var,
+            style='Calendar.TCheckbutton',
+        ).grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=(8, 0))
 
     def _read_numbers(self) -> tuple[int, int]:
         try:
@@ -101,7 +110,13 @@ class CalendarSyncWindow(tk.Toplevel):
     def _on_save(self) -> None:
         try:
             refresh, lead = self._read_numbers()
-            self.save_callback(self.enabled_var.get(), self.url_var.get(), refresh, lead)
+            self.save_callback(
+                self.enabled_var.get(),
+                self.url_var.get(),
+                refresh,
+                lead,
+                self.show_in_meeting_var.get(),
+            )
         except ValueError as e:
             themed_error(self, str(e), self.theme)
             return

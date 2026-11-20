@@ -96,6 +96,7 @@ class CalendarSyncService:
             'ics_url': str(cfg.get('ics_url', '') or ''),
             'refresh_minutes': self._clamp(cfg.get('refresh_minutes'), 15, 1, 1440),
             'lead_minutes': self._clamp(cfg.get('lead_minutes'), 10, 0, 120),
+            'show_in_meeting': bool(cfg.get('show_in_meeting', True)),
         }
 
     def update_settings(
@@ -104,9 +105,17 @@ class CalendarSyncService:
         ics_url: str,
         refresh_minutes: int,
         lead_minutes: int,
+        show_in_meeting: bool = True,
     ) -> None:
         """
         儲存設定並立即重新同步。
+
+        Args:
+            enabled: 是否啟用行事曆同步。
+            ics_url: Outlook ICS 連結。
+            refresh_minutes: 背景同步間隔分鐘數。
+            lead_minutes: 事件前預告分鐘數。
+            show_in_meeting: 是否顯示「會議中...」提醒。
 
         Raises:
             ValueError: 啟用時 URL 不是有效的 https 連結。
@@ -121,6 +130,7 @@ class CalendarSyncService:
             'ics_url': url,
             'refresh_minutes': self._clamp(refresh_minutes, 15, 1, 1440),
             'lead_minutes': self._clamp(lead_minutes, 10, 0, 120),
+            'show_in_meeting': bool(show_in_meeting),
         }
         persist_config(self.config_manager, config)
         with self._lock:
