@@ -34,11 +34,8 @@ class ReminderService:
         return self.config_manager.load_config()
 
     def add_reminder(self, time_data: Any, message: str, weekdays: list[str], original_reminder: dict[str, Any] | None = None, title: str = "") -> None:
-        """新增或更新提醒。"""
+        """新增或以單次設定寫入更新提醒。"""
         is_update = original_reminder is not None
-
-        if is_update:
-            self.delete_reminder(original_reminder, notify=False)
 
         if weekdays:
             # 週期性提醒
@@ -58,13 +55,18 @@ class ReminderService:
             }
 
         config = self.config
-        if 'reminders' not in config:
-            config['reminders'] = []
+        reminders = list(config.get('reminders', []))
+        if is_update:
+            try:
+                reminders.remove(original_reminder)
+            except ValueError:
+                pass
 
-        config['reminders'].append(reminder_data)
+        reminders.append(reminder_data)
+        config['reminders'] = reminders
         config['reminders'] = sorted(
             config['reminders'],
-            key=lambda r: r.get('datetime') or r.get('time')
+            key=lambda r: str(r.get('datetime') or r.get('time') or '')
         )
         persist_config(self.config_manager, config)
 

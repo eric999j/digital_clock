@@ -113,6 +113,25 @@ class TestMainWindowHandlers(unittest.TestCase):
 
         self.assertEqual(ui.config['reminders'], [{'title': 'snoozed'}])
         self.assertEqual(ui.config['appearance']['theme'], 'caramel')
+        ui._update_reminder_menu.assert_not_called()
+        delay, callback = ui.root.after.call_args.args
+        self.assertEqual(delay, 50)
+        callback()
+        ui._update_reminder_menu.assert_called_once()
+
+    def test_reminder_events_coalesce_menu_refresh(self):
+        ui = self._make_ui()
+        ui.logic.get_config.return_value = {'reminders': [{'title': 'saved'}]}
+        ui._show_themed_info = MagicMock()
+        ui._update_reminder_menu = MagicMock()
+
+        ui._on_reminder_added()
+        ui._on_reminder_updated()
+
+        ui.root.after.assert_called_once()
+        delay, callback = ui.root.after.call_args.args
+        self.assertEqual(delay, 50)
+        callback()
         ui._update_reminder_menu.assert_called_once()
 
     def test_due_reminder_syncs_removed_one_time_reminder(self):

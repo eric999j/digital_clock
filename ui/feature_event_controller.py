@@ -84,7 +84,7 @@ class FeatureEventController:
     def _on_reminder_snoozed(self, *args) -> None:
         """稍後提醒後同步提醒清單並刷新選單。"""
         self.config["reminders"] = self.logic.get_config().get("reminders", [])
-        self._update_reminder_menu()
+        self._schedule_reminder_menu_update()
 
     def _on_countdown_changed(self, *args) -> None:
         """倒數狀態變更時刷新資訊列。"""
@@ -173,17 +173,32 @@ class FeatureEventController:
     def _on_reminder_added(self, *args) -> None:
         self.config["reminders"] = self.logic.get_config().get("reminders", [])
         self._show_themed_info("提醒已設定成功！")
-        self._update_reminder_menu()
+        self._schedule_reminder_menu_update()
 
     def _on_reminder_updated(self, *args) -> None:
         self.config["reminders"] = self.logic.get_config().get("reminders", [])
         self._show_themed_info("提醒已更新！")
-        self._update_reminder_menu()
+        self._schedule_reminder_menu_update()
 
     def _on_reminder_deleted(self, *args) -> None:
         self.config["reminders"] = self.logic.get_config().get("reminders", [])
         self._show_themed_info("提醒已刪除。")
-        self._update_reminder_menu()
+        self._schedule_reminder_menu_update()
+
+    def _schedule_reminder_menu_update(self) -> None:
+        """稍後合併重建提醒選單，避免儲存 callback 被 Tk 選單操作阻塞。"""
+        if getattr(self, "_reminder_menu_after_id", None) is not None:
+            return
+
+        def refresh() -> None:
+            self._reminder_menu_after_id = None
+            self._update_reminder_menu()
+
+        try:
+            self._reminder_menu_after_id = self.root.after(50, refresh)
+        except tk.TclError:
+            self._reminder_menu_after_id = None
+            logger.debug("Clock window closed before reminder menu refresh")
 
     def _on_hourly_web_updated(self, *args) -> None:
         fresh = self.logic.get_config()

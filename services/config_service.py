@@ -264,7 +264,7 @@ class ConfigManager:
         """立即更新記憶體快照，並把磁碟寫入排到共用 worker。"""
         snapshot = copy.deepcopy(config)
         with self._cache_lock:
-            self._config_cache = copy.deepcopy(snapshot)
+            self._config_cache = snapshot
             if self._cache_mtime_ns is None:
                 self._cache_mtime_ns = self._get_file_mtime_ns()
         self._get_writer().submit(snapshot)
@@ -278,7 +278,7 @@ class ConfigManager:
             latest = self._load_config_unlocked(read_only=False)
             updated = update(latest)
             snapshot = copy.deepcopy(updated)
-            self._config_cache = copy.deepcopy(snapshot)
+            self._config_cache = snapshot
         self._get_writer().submit(snapshot)
 
     def flush_config_saves(self, timeout: float | None = None) -> bool:

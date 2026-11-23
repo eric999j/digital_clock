@@ -40,6 +40,27 @@ class TestReminderService(unittest.TestCase):
         self.assertEqual(r['weekdays'], ["週一", "週五"])
         self.assertEqual(r['time'], "10:00")
 
+    def test_update_reminder_uses_single_config_save(self):
+        original = {
+            'datetime': '2025-12-25 10:00:00',
+            'message': 'Old',
+            'weekdays': [],
+            'title': 'Old title',
+        }
+        self.config_data['reminders'] = [original]
+
+        self.service.add_reminder(
+            datetime(2025, 12, 25, 11, 0),
+            'Updated',
+            [],
+            original,
+            title='New title',
+        )
+
+        self.mock_config_mgr.save_config.assert_called_once()
+        self.assertEqual(len(self.config_data['reminders']), 1)
+        self.assertEqual(self.config_data['reminders'][0]['message'], 'Updated')
+
     def test_delete_reminder(self):
         # Setup existing reminder
         reminder = {
