@@ -5,11 +5,29 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from core.clock_logic import ClockLogic
+from core.clock_logic_facade import ClockLogicFacade
 from core.events import Events
 from core.typed_events import as_typed_event
 from services.config_service import ConfigManager
 from services.config_store import ConfigStore
 from services.config_writer import ConfigWriter
+from ui.feature_event_controller import FeatureEventController
+from ui.main_window import DigitalClock
+
+
+class TestControllerBoundaries(unittest.TestCase):
+    """主類別保留公開相容介面，但功能代理與事件處理由專責類別承接。"""
+
+    def test_clock_logic_exposes_separate_facade(self) -> None:
+        self.assertTrue(issubclass(ClockLogic, ClockLogicFacade))
+        self.assertNotIn("open_todo_window", ClockLogic.__dict__)
+        self.assertIn("open_todo_window", ClockLogicFacade.__dict__)
+
+    def test_digital_clock_exposes_separate_feature_controller(self) -> None:
+        self.assertTrue(issubclass(DigitalClock, FeatureEventController))
+        self.assertNotIn("_on_todo_updated", DigitalClock.__dict__)
+        self.assertIn("_on_todo_updated", FeatureEventController.__dict__)
 
 
 class TestTypedEvents(unittest.TestCase):

@@ -8,7 +8,7 @@ seams:
     protocol_shift: null
     frozen_side_rule: "Reminder, hourly-launch, todo, schedule, and calendar feature APIs MUST remain source-compatible during scheduler extraction."
     bridge_points:
-      - at: "ui/main_window.py:1868 -> core/clock_logic.py:307"
+      - at: "ui/main_window.py:1234 -> core/clock_logic_facade.py:76"
         from_form: "UI calls check_reminders(now) once per second"
         to_form: "scheduler calls one coordinator tick with the same shared datetime"
         mapping_rule: "Forward the same local datetime and preserve ordering: schedule, calendar, hourly launch, todo, reminders."
@@ -18,7 +18,7 @@ seams:
         idempotency_retry: "Deduplication remains inside each strategy; repeated ticks in one second remain safe."
         fallback: "If coordinator setup fails, do not partially start feature services."
         must_preserve: true
-  - id: "services/config_service.py:168"
+  - id: "services/config_service.py:263"
     description: "Freeze settings-file format while introducing slice-oriented mutation ownership."
     source: inferred
     cut_between:

@@ -18,7 +18,7 @@
 
 ## Development tooling
 
-- unittest: 40 test files.
+- unittest: 45 test files; 539 discovered tests in the 2026-11-23 review run (537 executed, 2 skipped).
 - Ruff: `E`, `F`, `W`, `I`, `B`, `UP`; target Python 3.13; line length 120.
 - coverage: source scope `core`, `services`, `strategies`.
 - setuptools build backend: `setuptools.build_meta`.
@@ -31,6 +31,7 @@
 - `subprocess.Popen` for program launch without a shell.
 - `pynput.keyboard.Listener` for global keyboard monitoring.
 - `ctypes.windll` on Windows for foreground-window behavior.
+- Tkinter widget helpers are split across renderer/presenter/router modules to reduce main-window rendering responsibility.
 - `ElementTree` for Windows Task Scheduler XML import.
 - `zoneinfo` for IANA time zones.
 
@@ -48,5 +49,7 @@
 - `ConfigManager.load_config(read_only=True)` returns a cache reference whose caller must not mutate it.
 - Multiple legacy configuration fields coexist with source-based pause state.
 - Python 3.13 syntax/type usage is part of the declared runtime contract.
+
+All Ruff checks passed in the 2026-11-23 review run, and the full unittest suite completed successfully with two expected skips.
 
 No target framework or target runtime is selected in this analysis phase.

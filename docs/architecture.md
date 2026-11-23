@@ -8,7 +8,8 @@ flowchart TB
 
     subgraph UI_Layer["UI 層 (ui/)"]
         direction LR
-        WINDOW["main_window.py<br/>DigitalClock (Observer)"]
+        WINDOW["main_window.py<br/>DigitalClock (Observer façade)"]
+        F_EVT["feature_event_controller.py<br/>功能事件控制器"]
         RENDER["clock_renderer.py<br/>Canvas 渲染"]
         INFO["info_band_presenter.py<br/>資訊列 Presenter"]
         MENUS["menus/<br/>右鍵選單"]
@@ -18,6 +19,7 @@ flowchart TB
     subgraph Core_Layer["核心層 (core/)"]
         direction LR
         LOGIC["clock_logic.py<br/>ClockLogic (Mediator)"]
+        FACADE["clock_logic_facade.py<br/>UI delegate façade"]
         EVT["events.py / typed_events.py<br/>事件名稱與型別封包"]
         OBS["observer.py<br/>Observer 介面"]
         TODOCORE["todo_task / todo_filter / todo_commands<br/>待辦模型、篩選、Command"]
@@ -35,13 +37,15 @@ flowchart TB
     STR["策略層 (strategies/)<br/>提醒 / 整點啟動 / 待辦到期 / 番茄鐘 / 勿擾排程 / 行事曆"]
 
     MAIN --> WINDOW
+    WINDOW --> F_EVT
     WINDOW --> MENUS
     WINDOW --> DIALOGS
     WINDOW --> RENDER
     WINDOW --> INFO
     WINDOW -->|呼叫| LOGIC
     LOGIC -.->|事件通知| WINDOW
-    LOGIC --> POMO
+    FACADE -.->|繼承 façade| LOGIC
+    FACADE --> POMO
     LOGIC --> REMS
     LOGIC --> MISC
     REMS --> STR
@@ -57,6 +61,7 @@ digital_clock/
 ├── main.py                      # 進入點：日誌、DPI 宣告、建立設定管理器並啟動
 ├── core/
 │   ├── clock_logic.py           # ClockLogic：協調各服務、事件通知、延遲儲存
+│   ├── clock_logic_facade.py    # UI 相容 delegate façade；代理功能服務公開方法
 │   ├── events.py                # Events 事件名稱常數
 │   ├── typed_events.py          # 型別化事件封包；相容既有 Observer 呼叫
 │   ├── observer.py              # Observer 抽象介面
@@ -86,6 +91,7 @@ digital_clock/
 ├── strategies/                  # BaseStrategy 及各可替換演算法
 ├── ui/
 │   ├── main_window.py           # DigitalClock 主視窗
+│   ├── feature_event_controller.py # 功能事件處理與跨視窗協調
 │   ├── clock_renderer.py        # 時鐘 Canvas 渲染、動畫與字元快取
 │   ├── info_band_presenter.py   # 時鐘下方資訊列組合與繪製
 │   ├── popup_utils.py           # 主題化彈窗（含 Markdown 渲染）
@@ -107,7 +113,8 @@ digital_clock/
 |------|------|------|
 | Observer | `core/observer.py` | `DigitalClock` 實作 `Observer`，訂閱 `ClockLogic` 以 `Events` 常數發出的事件 |
 | Typed Event | `core/typed_events.py` | 以不可變封包驗證常見 payload，同時轉回既有 `*args/**kwargs` 呼叫 |
-| Mediator | `core/clock_logic.py` | `ClockLogic` 協調各服務，服務透過 `notify_callback` 回報 |
+| Mediator / Facade | `core/clock_logic.py`、`core/clock_logic_facade.py` | `ClockLogic` 協調生命週期與服務；Facade 保留 UI 既有 delegate 呼叫介面 |
+| Feature Event Controller | `ui/feature_event_controller.py` | 將功能事件、彈窗與跨視窗協調從 `DigitalClock` 主類別拆出，仍維持既有 `_on_*` 方法介面 |
 | Strategy | `strategies/` | 提醒、整點啟動、待辦到期、番茄鐘階段、勿擾排程、行事曆事件的判斷邏輯可替換；`PomodoroService` 會實際呼叫 `PomodoroStrategy` |
 | Command | `core/todo_commands.py` | 待辦的每個操作都是可執行、可復原的 `TodoCommand`，由 `CommandHistory`（上限 50 步）記錄，`TodoService` 負責執行與存檔 |
 | Presenter / Renderer | `ui/info_band_presenter.py`、`ui/clock_renderer.py` | 將高頻 Canvas 組合與繪圖移出主視窗 façade |

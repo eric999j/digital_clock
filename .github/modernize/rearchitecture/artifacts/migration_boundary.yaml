@@ -1,9 +1,9 @@
 user_intent:
-  raw_request: "專案功能流程重構優化"
+  raw_request: "回顧此專案並深入分析"
   inferred_acceptance:
-    - "Produce a source-anchored whole-project flow and coupling analysis."
-    - "Preserve existing runtime behavior during analysis."
-    - "Do not modify application code in this phase."
+    - "Review the current whole-project architecture and runtime contracts."
+    - "Identify verified strengths, architectural pressure points, and runtime risks."
+    - "Refresh source-anchored architecture artifacts without changing application code."
   cleanup_required: false
 strategy: phased
 runtime_reachable:
@@ -23,9 +23,10 @@ copy_as_is:
 legacy_allowed_to_remain:
   - "All existing modules remain during the analysis-only phase."
 defer_cleanup:
-  - "Extract feature controllers from ClockLogic before removing any UI-facing delegates."
-  - "Extract rendering and preferences concerns from DigitalClock before changing event contracts."
-  - "Converge config write ownership after proving all settings mutations preserve in-memory pending state."
+  - "Keep inferred seams advisory until a concrete refactoring target is approved."
+  - "Extract additional feature controllers from ClockLogic only after preserving its public facade."
+  - "Continue separating rendering and preference mutation from DigitalClock; rendering/presentation are already partially extracted."
+  - "Retain the patch-on-latest settings merge while validating every mutation path uses the shared writer."
   - "Remove legacy pause booleans only after a versioned migration and runtime compatibility check."
 full_rewrite_reason: null
 implementation_rule: >

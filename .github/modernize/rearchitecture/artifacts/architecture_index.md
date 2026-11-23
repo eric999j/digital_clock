@@ -4,7 +4,7 @@ This index is not the full contract. Do not implement from this file alone; foll
 
 ## Scope
 
-This run analyzes the current application to support a phased functional-flow refactor. It does not authorize code changes and does not select target framework or final unit count.
+This run reviews the current application and refreshes source-anchored analysis. It does not authorize application-code changes and does not select a target framework or final unit count.
 
 ## Implementation Guide
 
@@ -108,9 +108,9 @@ This run analyzes the current application to support a phased functional-flow re
 
 ## Recommended refactoring order
 
-1. Add explicit config-slice ownership and a concurrency-safe pending-state merge.
-2. Extract feature event payload mapping from `DigitalClock`.
-3. Extract the check-cycle coordinator from the tkinter main window.
-4. Split source-based pause policy from its persistence adapter.
+1. Define explicit config-slice ownership while preserving the current patch-on-latest merge and serialized writer.
+2. Finish extracting feature event payload mapping from `DigitalClock`; `EventRouter` is the current adapter seam.
+3. Continue separating feature UI controllers from `DigitalClock`, preserving observer and popup adapters.
+4. Split source-based pause policy from its persistence adapter without losing legacy-field compatibility.
 5. Split todo UI presentation from tree/command/file-transfer responsibilities.
 6. Only then split `ClockLogic` and `DigitalClock` by feature, preserving old adapters until runtime evidence passes.

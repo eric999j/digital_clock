@@ -15,7 +15,7 @@ flows:
     medium: file
     key: "pause_sources + vacation_sources"
     writer:
-      {unit: vacation-mode, source_loc: "services/pause_manager.py:134"}
+      {unit: vacation-mode, source_loc: "services/pause_manager.py:92"}
     reader:
       {unit: reminders, source_loc: "services/reminder_service.py:133"}
     pairing: matched
@@ -29,7 +29,7 @@ flows:
     writer:
       {unit: calendar-sync, source_loc: "services/calendar_sync_service.py:277"}
     reader:
-      {unit: vacation-mode, source_loc: "services/pause_manager.py:183"}
+      {unit: vacation-mode, source_loc: "services/pause_manager.py:120"}
     pairing: matched
     must_preserve: true
     must_confirm: null

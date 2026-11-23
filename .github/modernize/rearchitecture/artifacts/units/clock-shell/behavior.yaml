@@ -1,12 +1,12 @@
 unit: clock-shell
 side_effects:
   - {source_loc: "main.py:31", effect: "Creates the rotating log, user config manager, DPI setup, main window, and tkinter process.", must_preserve: true}
-  - {source_loc: "core/clock_logic.py:112", effect: "Starts schedule checks, calendar thread, startup launch rules, and keyboard listener.", must_preserve: true}
-  - {source_loc: "ui/main_window.py:1855", effect: "Updates display and drives one service tick per local second.", must_preserve: true}
-  - {source_loc: "core/clock_logic.py:419", effect: "Flushes settings, stops keyboard/calendar/pomodoro, and destroys tkinter.", must_preserve: true}
+  - {source_loc: "core/clock_logic.py:178", effect: "Starts schedule checks, calendar thread, startup launch rules, and keyboard listener.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:1218", effect: "Updates display and drives one service tick per local second.", must_preserve: true}
+  - {source_loc: "core/clock_logic.py:384", effect: "Flushes settings, stops keyboard/calendar/pomodoro, and destroys tkinter.", must_preserve: true}
 branches:
-  - {source_loc: "ui/main_window.py:1855", condition: "The same second has not already been processed.", behavior: "Run schedule/calendar/hourly/todo/reminder checks and timer ticks once.", must_preserve: true}
-  - {source_loc: "ui/main_window.py:1855", condition: "A clock animation is active or the user is hovering.", behavior: "Schedule rapid or active refresh; otherwise relax scheduling.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:1218", condition: "The same second has not already been processed.", behavior: "Run schedule/calendar/hourly/todo/reminder checks and timer ticks once.", must_preserve: true}
+  - {source_loc: "ui/main_window.py:1218", condition: "A clock animation is active or the user is hovering.", behavior: "Schedule rapid or active refresh; otherwise relax scheduling.", must_preserve: true}
   - {source_loc: "core/clock_logic.py:250", condition: "Global screenshot shortcut is detected.", behavior: "Marshalling through root.after hides the clock on the tkinter thread.", must_preserve: true}
 error_paths:
   - {source_loc: "core/clock_logic.py:101", trigger: "One Observer update raises.", outcome: "Log observer type/event and continue dispatching to later observers.", contract: "No observer failure escapes notify_observers.", must_preserve: true}
@@ -14,7 +14,7 @@ error_paths:
 concurrency:
   model: event-loop
   tx_boundary:
-    source_loc: "ui/main_window.py:1855"
+    source_loc: "ui/main_window.py:1218"
     scope: "One UI tick renders then invokes synchronous feature checks; calendar fetch and keyboard events cross in from worker threads."
     isolation: "No data transaction; shared UI state is main-thread only."
     must_preserve: true

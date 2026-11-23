@@ -11,11 +11,12 @@
 
 | Path | File count | Role |
 |---|---:|---|
-| `core/` | 14 Python files | Orchestration, events, observer contract, domain models, commands, launch safety |
-| `services/` | 15 Python files | Stateful feature engines, persistence adapters, calendar/keyboard integrations |
+| `core/` | 17 Python files | Orchestration, events, observer contract, domain models, commands, launch safety |
+| `services/` | 19 Python files | Stateful feature engines, persistence adapters, calendar/keyboard integrations |
 | `strategies/` | 8 Python files | Replaceable time and schedule decision logic |
-| `ui/` | 21 Python files | Main window, menus, feature dialogs, themed popups |
-| `tests/` | 40 Python files | unittest coverage for services, strategies, persistence, and UI |
+| `ui/` | 19 Python files | Main window, rendering/presentation, feature dialogs, themed popups and support modules |
+| `ui/menus/` | 6 Python files | Right-click menu composition by feature |
+| `tests/` | 45 Python files | unittest coverage for services, strategies, persistence, and UI |
 | root | 1 Python file | `main.py` application entrypoint |
 
 ## Layers
@@ -44,9 +45,9 @@
 ## Entry points
 
 - `main.py:31` starts the application when executed directly.
-- `ui/main_window.py:1900` starts the tkinter main loop.
-- `ui/main_window.py:1855` is the recurring UI/logic tick entrypoint.
-- `core/clock_logic.py:307` coordinates one business-logic check cycle.
+- `ui/main_window.py:1263` starts the tkinter main loop.
+- `ui/main_window.py:1218` is the recurring UI/logic tick entrypoint.
+- `core/check_coordinator.py:34` coordinates one business-logic check cycle.
 
 ## Key configuration and packaging
 
@@ -59,6 +60,8 @@
 ## Structural observations
 
 - `ui/main_window.py` and `core/clock_logic.py` are the dominant coordination surfaces.
+- `ui/event_router.py` now centralizes the event-to-handler map, but `DigitalClock` still owns the handlers and window orchestration.
 - Feature services are independently testable, but UI construction and event handling remain centralized in the main window.
 - Settings persistence is shared broadly; several components reload and immediately save complete configuration dictionaries.
+- A background `ConfigWriter` serializes full snapshots, and `ClockLogic.schedule_save` protects delayed UI writes with patch-on-latest merge semantics.
 - Todo persistence is intentionally separated from settings persistence.

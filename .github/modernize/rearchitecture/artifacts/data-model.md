@@ -49,6 +49,7 @@ Stored in `config.calendar_sync`.
 - `ics_url`
 - `refresh_minutes`
 - `lead_minutes`
+- `show_in_meeting`
 
 ### Other configuration groups
 

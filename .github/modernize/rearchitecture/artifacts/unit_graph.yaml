@@ -5,9 +5,9 @@ units:
     source_anchors:
       - {path: main.py, line: 31}
     exported_signature:
-      - {method: "DigitalClock.run() -> None", source_loc: "ui/main_window.py:1900", stability: must_preserve}
-      - {method: "ClockLogic.start() -> None", source_loc: "core/clock_logic.py:112", stability: must_preserve}
-      - {method: "ClockLogic.on_close() -> None", source_loc: "core/clock_logic.py:419", stability: must_preserve}
+      - {method: "DigitalClock.run() -> None", source_loc: "ui/main_window.py:1263", stability: must_preserve}
+      - {method: "ClockLogic.start() -> None", source_loc: "core/clock_logic.py:178", stability: must_preserve}
+      - {method: "ClockLogic.on_close() -> None", source_loc: "core/clock_logic.py:384", stability: must_preserve}
     dynamic_entrypoints:
       - {target: "tkinter mainloop and WM_DELETE_WINDOW callback", mechanism: convention, source_loc: "ui/main_window.py:683"}
     depends_on: []

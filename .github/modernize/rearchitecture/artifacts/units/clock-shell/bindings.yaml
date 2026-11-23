@@ -1,7 +1,7 @@
 unit: clock-shell
 bindings:
-  - {type: listener, name: "WM_DELETE_WINDOW -> ClockLogic.on_close", source_loc: "ui/main_window.py:683", target: "core.clock_logic.ClockLogic.on_close", must_appear_in_target: true, notes: "Flush pending settings before destroy."}
-  - {type: listener, name: "tkinter after -> DigitalClock.update_time", source_loc: "ui/main_window.py:1900", target: "ui.main_window.DigitalClock.update_time", must_appear_in_target: true, notes: "Recurring render/logic scheduler."}
+  - {type: listener, name: "WM_DELETE_WINDOW -> ClockLogic.on_close", source_loc: "ui/main_window.py:573", target: "core.clock_logic.ClockLogic.on_close", must_appear_in_target: true, notes: "Flush pending settings before destroy."}
+  - {type: listener, name: "tkinter after -> DigitalClock.update_time", source_loc: "ui/main_window.py:1218", target: "ui.main_window.DigitalClock.update_time", must_appear_in_target: true, notes: "Recurring render/logic scheduler."}
   - {type: listener, name: "pynput Listener -> screenshot callback", source_loc: "services/keyboard_service.py:68", target: "ClockLogic._on_screenshot_triggered", must_appear_in_target: true, notes: "Background-to-main-thread handoff."}
 runtime_config:
   - {key: "system.save_delay_ms", source_loc: "core/clock_logic.py:134", source: code, default_value: "1000", must_appear_in_target: true, notes: "Debounced settings save delay."}
