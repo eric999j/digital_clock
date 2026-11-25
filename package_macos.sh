@@ -8,11 +8,20 @@ VENV_PY=".venv/bin/python3"
 if [ ! -x "$VENV_PY" ]; then
   echo "[1/4] Creating virtual environment..."
   if command -v python3 >/dev/null 2>&1; then
+    if ! python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 13))'; then
+      echo "ERROR: Python 3.13+ is required."
+      exit 1
+    fi
     python3 -m venv .venv
   else
     echo "ERROR: python3 not found. Install Python 3.13+ and try again."
     exit 1
   fi
+fi
+
+if ! "$VENV_PY" -c 'import sys, tkinter; raise SystemExit(sys.version_info < (3, 13))'; then
+  echo "ERROR: Python 3.13+ with Tkinter is required."
+  exit 1
 fi
 
 echo "[2/4] Installing runtime dependencies..."
@@ -26,5 +35,5 @@ echo "[4/4] Building release binary..."
 "$VENV_PY" -m PyInstaller --noconfirm --clean --windowed --onefile --name DigitalClock --collect-all pynput --collect-all tkinterdnd2 --collect-all icalendar --collect-all recurring_ical_events --collect-all x_wr_timezone main.py
 
 echo
-echo "Build completed: dist/DigitalClock"
-echo "You can launch this binary directly on macOS."
+echo "Build completed: dist/DigitalClock.app"
+echo "You can launch DigitalClock.app on macOS."
