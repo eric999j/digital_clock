@@ -6,8 +6,9 @@ pip install -e ".[dev]"                   # 安裝 ruff、coverage
 python -m ruff check .
 ```
 
-- CI（`.github/workflows/ci.yml`）：ruff 檢查，以及 Ubuntu（xvfb）與 Windows 上的 unittest + coverage。
-- 非 Windows 平台不支援 `-transparentcolor` 等 Windows 視窗屬性，程式會略過；少數測試依賴 Windows 行為（如 `shutdown.exe`），在其他平台自動略過。
+- CI（`.github/workflows/ci.yml`）：ruff 檢查，以及 Ubuntu（xvfb）、Windows、macOS 上的 unittest + coverage。
+- 非 Windows 平台不支援 `-transparentcolor` 等 Windows 視窗屬性，程式會略過或回退；少數測試依賴 Windows 行為（如 `shutdown.exe`），在其他平台自動略過。
+- `pynput` 後端可能被 macOS 輔助使用權限、Linux Wayland/沙箱或無顯示器環境阻擋。啟動失敗時只停用全域截圖快捷鍵，不影響時鐘、提醒與其他功能。
 - 測試使用標準庫 `unittest`；涉及 `ConfigManager` 時應 mock `Path.home()`，避免讀寫使用者設定。
 - 部分 UI 測試需要可用的顯示器，無顯示器時會自動略過。
 - 更多開發約定見 [AGENTS.md](../AGENTS.md)。

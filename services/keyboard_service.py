@@ -1,11 +1,21 @@
 """鍵盤監聽服務。"""
+import logging
 from collections.abc import Callable
 from typing import Any
 
-from pynput import keyboard
-from pynput.keyboard import Key
+try:
+    from pynput import keyboard
+    from pynput.keyboard import Key
+except (ImportError, OSError, RuntimeError) as e:
+    keyboard = None
+    Key = None
+    logging.getLogger(__name__).warning(
+        "Global keyboard listener unavailable on this platform: %s", e
+    )
 
 from services.config_service import ConfigManager
+
+logger = logging.getLogger(__name__)
 
 # 同一個修飾鍵的左右版本要視為同一個名稱
 _KEY_FAMILIES: tuple[tuple[str, ...], ...] = (
@@ -32,7 +42,7 @@ class KeyboardService:
         self.KEY_MAP: dict[Any, str] = {}
         self.WIN_SCREENSHOT_KEYS: set[str] = set()
         self.SINGLE_SCREENSHOT_KEYS: set[str] = set()
-        self.listener: keyboard.Listener | None = None
+        self.listener: Any | None = None
         self._combination_triggered = False
 
         self._load_config()
@@ -48,7 +58,7 @@ class KeyboardService:
         self.KEY_MAP = {}
         configured: dict[str, str] = {}
         for key_attr, key_name in sys_conf.get('key_map', {}).items():
-            if hasattr(Key, key_attr):
+            if Key is not None and hasattr(Key, key_attr):
                 self.KEY_MAP[getattr(Key, key_attr)] = key_name
                 configured[key_attr] = key_name
 
@@ -57,22 +67,32 @@ class KeyboardService:
             name = next((configured[attr] for attr in family if attr in configured), None)
             if name:
                 for attr in family:
-                    if hasattr(Key, attr):
+                    if Key is not None and hasattr(Key, attr):
                         self.KEY_MAP.setdefault(getattr(Key, attr), name)
 
         # 單鍵觸發的按鍵（如 print_screen）未明確映射時，直接以按鍵名稱映射
         for attr in self.SINGLE_SCREENSHOT_KEYS:
-            if hasattr(Key, attr):
+            if Key is not None and hasattr(Key, attr):
                 self.KEY_MAP.setdefault(getattr(Key, attr), attr)
 
-    def start(self) -> None:
-        """啟動鍵盤監聽。"""
+    def start(self) -> bool:
+        """啟動鍵盤監聽；平台後端不可用時停用此功能，不影響主程式。"""
         if self.listener is None:
-            self.listener = keyboard.Listener(
-                on_press=self._on_press,
-                on_release=self._on_key_release
-            )
-            self.listener.start()
+            if keyboard is None:
+                logger.warning("Screenshot shortcut listener is disabled because pynput is unavailable")
+                return False
+            try:
+                listener = keyboard.Listener(
+                    on_press=self._on_press,
+                    on_release=self._on_key_release,
+                )
+                listener.start()
+                self.listener = listener
+            except (ImportError, OSError, RuntimeError) as e:
+                logger.warning("Unable to start screenshot shortcut listener: %s", e)
+                self.listener = None
+                return False
+        return True
 
     def stop(self) -> None:
         """停止鍵盤監聽。"""

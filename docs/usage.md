@@ -57,9 +57,11 @@ start "" "<Python 安裝資料夾>\pythonw.exe" "main.py"
 | 平台 | 指令 | 產出 |
 |------|------|------|
 | Windows | 雙擊 `package_windows.bat` | `dist/DigitalClock.exe` |
-| macOS | `chmod +x package_macos.sh && ./package_macos.sh` | `dist/DigitalClock` |
-| Linux | `chmod +x package_linux.sh && ./package_linux.sh` | `dist/DigitalClock` |
+| macOS | `./package_macos.sh` | `dist/DigitalClock.app` |
+| Linux | `./package_linux.sh` | `dist/DigitalClock` |
 
 注意事項：
 - 建議在目標平台各自打包。
+- Unix 腳本會驗證 Python 3.13+ 與 Tkinter；Debian/Ubuntu 若缺少 Tkinter，請安裝對應版本的 `python3-tk`。
+- macOS 首次使用截圖自動隱藏時，需在系統設定授權 Python 的「輔助使用」。
 - onefile 每次啟動都需解壓縮，啟動較慢；分發給 macOS 使用者通常還需簽章與公證，Windows 未簽署的執行檔可能被 SmartScreen 警告。

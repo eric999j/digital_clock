@@ -28,8 +28,10 @@
 | 平台 | 做法 |
 |------|------|
 | Windows | 雙擊 `start_windows.bat` |
-| macOS | 首次執行 `chmod +x start_macos.command`，之後在 Finder 雙擊 |
-| Linux | 首次執行 `chmod +x start_linux.sh`，之後在檔案管理器雙擊（詢問時選 Run） |
+| macOS | 雙擊 `start_macos.command`（需要 Python 3.13+；若系統移除執行權限則先執行 `chmod +x start_macos.command`） |
+| Linux | 執行 `./start_linux.sh` 或在檔案管理器以「執行」開啟（需要 Python 3.13+ 與 Tkinter） |
+
+macOS 上若要使用「截圖時自動隱藏」，第一次啟動後須在「系統設定 › 隱私權與安全性 › 輔助使用」授權 Python；未授權時其餘功能仍可正常使用。Linux Wayland 或沙箱化桌面若限制全域鍵盤事件，也只會停用截圖快捷鍵，不影響主程式。
 
 ### 手動執行
 ```bash

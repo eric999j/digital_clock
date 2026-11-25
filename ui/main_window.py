@@ -195,10 +195,16 @@ class DigitalClock(FeatureEventController, Observer):
             self.root.config(bg=self.transparent_color)
             self.root.attributes('-transparentcolor', self.transparent_color)
             self.root.attributes('-toolwindow', True)
-        elif sys.platform == "darwin": # macOS
-            self.root.attributes('-transparent', True)
-            self.root.config(bg='systemTransparent')
-            self.transparent_color = 'systemTransparent'
+        elif sys.platform == "darwin":  # macOS
+            self.transparent_color = 'black'
+            self.root.config(bg=self.transparent_color)
+            try:
+                self.root.config(bg='systemTransparent')
+                self.root.attributes('-transparent', True)
+                self.transparent_color = 'systemTransparent'
+            except tk.TclError:
+                self.root.config(bg=self.transparent_color)
+                logger.info("macOS Tk does not support transparent windows; using an opaque background")
         else: # Linux
             # 在 Linux 上，透明度依賴於視窗管理員的支援
             self.transparent_color = 'black'

@@ -48,11 +48,11 @@ class ZoneTime:
 
 @cache
 def _load_zone(key: str) -> ZoneInfo | None:
-    """載入時區資料；系統缺少時區資料庫（Windows 未安裝 tzdata）時回傳 None。"""
+    """載入時區資料；系統缺少 IANA 時區資料庫時回傳 None。"""
     try:
         return ZoneInfo(key)
     except (ZoneInfoNotFoundError, ValueError, OSError):
-        logger.warning("找不到時區資料：%s（Windows 需安裝 tzdata 套件）", key)
+        logger.warning("找不到時區資料：%s（Windows 請安裝 tzdata 套件）", key)
         return None
 
 

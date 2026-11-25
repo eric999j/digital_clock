@@ -31,7 +31,7 @@ class TestKeyboardService(unittest.TestCase):
 
     @patch('services.keyboard_service.keyboard.Listener')
     def test_start_creates_listener(self, mock_listener_cls):
-        self.service.start()
+        self.assertTrue(self.service.start())
         mock_listener_cls.assert_called_once()
         mock_listener_cls.return_value.start.assert_called_once()
         self.assertIsNotNone(self.service.listener)
@@ -51,6 +51,26 @@ class TestKeyboardService(unittest.TestCase):
 
     def test_stop_when_not_started(self):
         self.service.stop()
+        self.assertIsNone(self.service.listener)
+
+    @patch('services.keyboard_service.keyboard', None)
+    def test_start_is_safe_when_platform_backend_is_unavailable(self):
+        self.assertFalse(self.service.start())
+        self.assertIsNone(self.service.listener)
+
+    @patch('services.keyboard_service.Key', None)
+    def test_config_loading_is_safe_when_key_backend_is_unavailable(self):
+        service = KeyboardService(self.mock_config_mgr, self.mock_callback)
+
+        self.assertEqual(service.KEY_MAP, {})
+        self.assertEqual(service.WIN_SCREENSHOT_KEYS, {'cmd_l', 'shift', 's'})
+
+    @patch('services.keyboard_service.keyboard.Listener')
+    def test_start_is_safe_when_listener_backend_fails(self, mock_listener_cls):
+        mock_listener_cls.return_value.start.side_effect = RuntimeError('backend unavailable')
+
+        self.assertFalse(self.service.start())
+
         self.assertIsNone(self.service.listener)
 
     def test_on_press_adds_mapped_key(self):
