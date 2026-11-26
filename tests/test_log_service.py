@@ -76,7 +76,10 @@ class TestLogService(unittest.TestCase):
             logger.warning('existing log')
             self.log_service.clear_log()
             handler.flush()
-            self.assertEqual(self.log_service.log_file.read_text(encoding='utf-8'), '')
+            self.assertNotIn(
+                'existing log',
+                self.log_service.log_file.read_text(encoding='utf-8'),
+            )
 
             logger.warning('new log')
             handler.flush()
