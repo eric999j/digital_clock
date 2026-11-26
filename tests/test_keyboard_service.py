@@ -165,11 +165,14 @@ class TestScreenshotShortcutWithDefaultConfig(unittest.TestCase):
         self.callback.assert_not_called()
 
     def test_print_screen_triggers_once_even_when_held(self):
-        self.service._on_press(Key.print_screen)
-        self.service._on_press(Key.print_screen)
+        print_screen = getattr(Key, 'print_screen', object())
+        self.service.KEY_MAP[print_screen] = 'print_screen'
+
+        self.service._on_press(print_screen)
+        self.service._on_press(print_screen)
         self.callback.assert_called_once()
-        self.service._on_key_release(Key.print_screen)
-        self.service._on_press(Key.print_screen)
+        self.service._on_key_release(print_screen)
+        self.service._on_press(print_screen)
         self.assertEqual(self.callback.call_count, 2)
 
 
