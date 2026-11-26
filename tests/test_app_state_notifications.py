@@ -1,6 +1,7 @@
 """AppState 跨模組狀態與 NotificationCenter 統一通知中心測試，並驗證兩者在 ClockLogic 派發下協同運作。"""
 import unittest
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from core.app_state import AppState, AppStateSnapshot
@@ -15,6 +16,7 @@ from services.notification_center import (
     SOURCE_TODO,
     NotificationCenter,
 )
+from ui.notification_window import NotificationWindow
 
 
 class TestAppState(unittest.TestCase):
@@ -130,6 +132,32 @@ class TestNotificationCenter(unittest.TestCase):
             self.center.update(Events.REMINDER_DUE, {'title': str(i)})
         self.assertEqual([i.title for i in self.center.items(SOURCE_REMINDER)], ["4", "3", "2"])
         self.assertEqual(self.center.items(SOURCE_TODO), [])
+        self.assertEqual(self.center.get_item(3).title, "2")
+        self.assertIsNone(self.center.get_item(999))
+
+
+class TestNotificationWindow(unittest.TestCase):
+    def test_double_click_opens_view_only_popup_without_snooze(self) -> None:
+        notification = MagicMock(id=7, title="喝水", message="記得喝水")
+        window = NotificationWindow.__new__(NotificationWindow)
+        window.tree = MagicMock()
+        window.tree.identify_row.return_value = "7"
+        window.center = MagicMock()
+        window.center.get_item.return_value = notification
+        window.theme = {'bg': '#123456', 'fg': '#ffffff'}
+
+        with unittest.mock.patch(
+            'ui.notification_window.show_reminder_popup_window',
+        ) as show_popup:
+            window._on_double_click(SimpleNamespace(y=42))
+
+        show_popup.assert_called_once_with(
+            window,
+            "記得喝水",
+            window.theme,
+            title="喝水",
+            ok_text="關閉",
+        )
 
 
 class _Recorder(Observer):

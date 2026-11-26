@@ -76,6 +76,10 @@ class NotificationCenter(Observer):
         """由新到舊回傳通知；可指定來源篩選。"""
         return [n for n in reversed(self._items) if source is None or n.source == source]
 
+    def get_item(self, notification_id: int) -> Notification | None:
+        """依識別碼取得通知；通知已清除或淘汰時回傳 None。"""
+        return next((item for item in self._items if item.id == notification_id), None)
+
     def unread_count(self) -> int:
         return sum(1 for n in self._items if not n.read)
 

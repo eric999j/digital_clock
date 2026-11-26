@@ -4,6 +4,7 @@ from tkinter import font as tkfont
 from tkinter import ttk
 
 from services.notification_center import NotificationCenter
+from ui.popup_utils import show_reminder_popup_window
 from ui.theme_utils import (
     BUTTON_FG,
     BUTTON_HOVER_BG,
@@ -97,7 +98,28 @@ class NotificationWindow(tk.Toplevel):
         v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.tree.bind('<Configure>', lambda _e: self._layout_columns())
+        self.tree.bind('<Double-Button-1>', self._on_double_click)
         self._empty_label = tk.Label(self.tree, text=_EMPTY_TEXT, justify=tk.CENTER)
+
+    def _on_double_click(self, event: tk.Event) -> None:
+        """雙擊通知列時開啟僅供檢視的訊息視窗。"""
+        item_id = self.tree.identify_row(event.y)
+        if not item_id:
+            return
+        try:
+            notification_id = int(item_id)
+        except ValueError:
+            return
+        item = self.center.get_item(notification_id)
+        if item is None:
+            return
+        show_reminder_popup_window(
+            self,
+            item.message,
+            self.theme,
+            title=item.title,
+            ok_text="關閉",
+        )
 
     @staticmethod
     def _clean_message(message: object) -> str:
