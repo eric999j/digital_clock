@@ -390,19 +390,32 @@ class TestDueReminder(TodoServiceTestBase):
 
     def test_notifies_due_tasks_once_per_hour(self) -> None:
         config = {"todo": {"remind_enabled": True, "start_hour": 9, "end_hour": 17, "work_days_only": True}}
-        self.service.check(self.NOW, config)
+        self.service.check(False, self.NOW, config)
         self.assertEqual(self.notify.call_count, 1)
         event, items = self.notify.call_args.args
         self.assertEqual(event, Events.TODO_DUE)
         self.assertEqual(items[0]["status"], "overdue")
-        self.service.check(self.NOW.replace(second=30), config)
+        self.service.check(False, self.NOW.replace(second=30), config)
         self.assertEqual(self.notify.call_count, 1)
 
-    def test_skips_when_vacation_or_hourly_paused(self) -> None:
+    def test_skips_when_coordinator_reports_paused(self) -> None:
         base = {"todo": {"remind_enabled": True, "start_hour": 9, "end_hour": 17}}
-        self.service.check(self.NOW, {**base, "on_vacation": True})
-        self.service.check(self.NOW, {**base, "hourly_web_reminder": {"paused": True}})
+        self.service.check(True, self.NOW, base)
         self.notify.assert_not_called()
+
+    def test_does_not_read_legacy_pause_fields(self) -> None:
+        config = {
+            "todo": {
+                "remind_enabled": True,
+                "start_hour": 9,
+                "end_hour": 17,
+            },
+            "on_vacation": True,
+            "hourly_web_reminder": {"paused": True},
+        }
+        self.service.check(False, self.NOW, config)
+        self.notify.assert_called_once()
+        self.assertEqual(self.notify.call_args.args[0], Events.TODO_DUE)
 
     def test_remind_toggle_roundtrip(self) -> None:
         self.assertTrue(self.service.is_remind_enabled())

@@ -1,7 +1,7 @@
 """功能檢查協調器測試。"""
 import unittest
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from core.check_coordinator import CheckCoordinator
 
@@ -18,8 +18,13 @@ class TestCheckCoordinator(unittest.TestCase):
         def named(name):
             service = MagicMock()
             method = service.check
-            method.side_effect = lambda **kwargs: calls.append(
-                (name, kwargs.get('now'), kwargs.get('config'))
+            method.side_effect = lambda *args, **kwargs: calls.append(
+                (
+                    name,
+                    kwargs.get('now'),
+                    kwargs.get('config'),
+                    args[0] if args else None,
+                )
             )
             return service
 
@@ -32,7 +37,7 @@ class TestCheckCoordinator(unittest.TestCase):
             ('reminder', kwargs.get('now'), kwargs.get('config'), paused)
         )
         pause_manager = MagicMock()
-        pause_manager.get_pause_state.return_value = False
+        pause_manager.get_pause_state.side_effect = [False, False, False]
         coordinator = CheckCoordinator(
             config_manager,
             vacation,
@@ -54,8 +59,14 @@ class TestCheckCoordinator(unittest.TestCase):
         self.assertIs(calls[2][2], feature_snapshot)
         self.assertIs(calls[3][2], feature_snapshot)
         self.assertIs(calls[4][2], feature_snapshot)
-        pause_manager.get_pause_state.assert_called_once_with(
-            'reminder', config=feature_snapshot
+        self.assertIs(calls[3][3], False)
+        self.assertEqual(
+            pause_manager.get_pause_state.call_args_list,
+            [
+                call('vacation', config=feature_snapshot),
+                call('hourly_web', config=feature_snapshot),
+                call('reminder', config=feature_snapshot),
+            ],
         )
 
 

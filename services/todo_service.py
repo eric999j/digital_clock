@@ -294,14 +294,24 @@ class TodoService:
         persist_config(self.config_manager, config)
         self.notify(Events.TODO_REMIND_TOGGLED, bool(enabled))
 
-    def check(self, now: datetime | None = None, config: dict[str, Any] | None = None) -> None:
-        """整點時提醒今日到期／逾期的待辦；勿擾或整點啟動暫停時略過。"""
+    def check(
+        self,
+        is_paused: bool,
+        now: datetime | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> None:
+        """整點時提醒今日到期／逾期待辦；暫停時略過。
+
+        Args:
+            is_paused: 是否因勿擾或整點啟動暫停而略過提醒。
+            now: 可選的當前時間快照。
+            config: 可選的設定快照；未提供時才從 ConfigManager 讀取。
+        """
+        if is_paused:
+            return
+
         current = now if now is not None else datetime.now()
         config_data = config if config is not None else self.config_manager.load_config(read_only=True)
-        if config_data.get('on_vacation', False):
-            return
-        if config_data.get('hourly_web_reminder', {}).get('paused', False):
-            return
         due = self.strategy.check(config_data.get('todo', {}), self.tasks, current)
         if due:
             self.notify(Events.TODO_DUE, due)

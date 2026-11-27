@@ -42,7 +42,18 @@ class CheckCoordinator:
 
         config_snapshot = self.config_manager.load_config(read_only=True)
         self.hourly_service.check(now=check_time, config=config_snapshot)
-        self.todo_service.check(now=check_time, config=config_snapshot)
+        todo_paused = (
+            self.pause_manager.get_pause_state('vacation', config=config_snapshot)
+            or self.pause_manager.get_pause_state(
+                'hourly_web',
+                config=config_snapshot,
+            )
+        )
+        self.todo_service.check(
+            todo_paused,
+            now=check_time,
+            config=config_snapshot,
+        )
 
         is_paused = self.pause_manager.get_pause_state(
             'reminder',
