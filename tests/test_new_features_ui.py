@@ -308,6 +308,35 @@ class TestMainWindowHandlers(unittest.TestCase):
         self.assertIn("「泡麵」倒數 05:00 結束了", args)
         self.assertEqual(kwargs["title"], "倒數計時")
 
+    def test_deferred_countdown_does_not_ring_or_show_popup(self):
+        ui = self._make_ui()
+        ui._refresh_info_lines = MagicMock()
+        ui.logic.notification_center.should_defer.return_value = True
+
+        with patch("ui.popup_utils.show_reminder_popup_window") as show:
+            ui._on_countdown_finished("泡麵", 300)
+
+        ui._refresh_info_lines.assert_called_once()
+        ui.root.bell.assert_not_called()
+        show.assert_not_called()
+
+    def test_released_notifications_show_one_grouped_popup(self):
+        ui = self._make_ui()
+        ui._get_current_theme = MagicMock(return_value={'bg': '#000', 'fg': '#fff'})
+
+        with patch("ui.popup_utils.show_reminder_popup_window") as show:
+            ui._on_notifications_released([
+                {'source_label': '提醒', 'count': 2},
+                {'source_label': '待辦', 'count': 1},
+            ])
+            (scheduled,), _ = ui.root.after_idle.call_args
+            scheduled()
+
+        message = show.call_args.args[1]
+        self.assertIn("共有 3 則", message)
+        self.assertIn("提醒 2 則", message)
+        self.assertIn("待辦 1 則", message)
+
     def test_drag_is_clamped_to_screen(self):
         ui = self._make_ui()
         ui.drag_offset = {'x': 0, 'y': 0}

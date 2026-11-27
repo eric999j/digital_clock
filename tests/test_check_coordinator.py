@@ -37,7 +37,7 @@ class TestCheckCoordinator(unittest.TestCase):
             ('reminder', kwargs.get('now'), kwargs.get('config'), paused)
         )
         pause_manager = MagicMock()
-        pause_manager.get_pause_state.side_effect = [False, False, False]
+        pause_manager.is_manually_paused.side_effect = [False, False]
         coordinator = CheckCoordinator(
             config_manager,
             vacation,
@@ -61,9 +61,8 @@ class TestCheckCoordinator(unittest.TestCase):
         self.assertIs(calls[4][2], feature_snapshot)
         self.assertIs(calls[3][3], False)
         self.assertEqual(
-            pause_manager.get_pause_state.call_args_list,
+            pause_manager.is_manually_paused.call_args_list,
             [
-                call('vacation', config=feature_snapshot),
                 call('hourly_web', config=feature_snapshot),
                 call('reminder', config=feature_snapshot),
             ],

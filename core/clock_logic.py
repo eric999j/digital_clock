@@ -143,8 +143,12 @@ class ClockLogic(ClockLogicFacade):
 
         # 跨模組狀態與通知中心：先於 UI 註冊，UI 收到事件時狀態已是最新
         self.app_state = AppState(self.notify_observers)
-        self.notification_center = NotificationCenter(self.notify_observers)
         self.add_observer(self.app_state)
+        self.notification_center = NotificationCenter(
+            self.notify_observers,
+            config_manager=config_manager,
+            state_getter=lambda: self.app_state.snapshot,
+        )
         self.add_observer(self.notification_center)
 
     def add_observer(self, observer: Observer) -> None:

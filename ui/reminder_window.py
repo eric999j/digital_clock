@@ -145,6 +145,17 @@ class ReminderWindow(tk.Toplevel):
         self.msg_entry.bind('<KP_Subtract>', lambda e: e.widget.insert(tk.INSERT, '-') or 'break')
         self.msg_entry.bind('<KP_Decimal>', lambda e: e.widget.insert(tk.INSERT, '.') or 'break')
 
+        self.allow_during_quiet_var = tk.BooleanVar(
+            self,
+            value=False,
+        )
+        ttk.Checkbutton(
+            frame,
+            text="專注／勿擾期間仍立即顯示此提醒",
+            variable=self.allow_during_quiet_var,
+            style='Reminder.TCheckbutton',
+        ).pack(anchor='w', pady=(2, 5))
+
         # 按鈕
         btn_frame = ttk.Frame(frame, style='Reminder.TFrame')
         btn_frame.pack(fill=tk.X, pady=10)
@@ -175,11 +186,19 @@ class ReminderWindow(tk.Toplevel):
                 return
 
             selected_weekdays = [day for day, var in self.weekday_vars.items() if var.get()]
+            allow_during_quiet = self.allow_during_quiet_var.get()
 
             if selected_weekdays:
                 # 週期性提醒
                 reminder_time = f"{hour:02d}:{minute:02d}"
-                self.callback(reminder_time, message, selected_weekdays, self.reminder_to_edit, title)
+                self.callback(
+                    reminder_time,
+                    message,
+                    selected_weekdays,
+                    self.reminder_to_edit,
+                    title,
+                    allow_during_quiet,
+                )
             else:
                 # 單次提醒
                 year = int(self.year_var.get())
@@ -197,7 +216,14 @@ class ReminderWindow(tk.Toplevel):
                 if not is_editing_without_time_change and reminder_datetime <= datetime.now():
                     self._show_error("提醒時間必須是未來的時間。")
                     return
-                self.callback(reminder_datetime, message, [], self.reminder_to_edit, title)
+                self.callback(
+                    reminder_datetime,
+                    message,
+                    [],
+                    self.reminder_to_edit,
+                    title,
+                    allow_during_quiet,
+                )
 
             self.destroy()
 
@@ -213,6 +239,9 @@ class ReminderWindow(tk.Toplevel):
 
         self.title_entry.insert(0, self.reminder_to_edit.get('title', ''))
         self.msg_entry.insert("1.0", self.reminder_to_edit.get('message', ''))
+        self.allow_during_quiet_var.set(
+            bool(self.reminder_to_edit.get('allow_during_quiet', False))
+        )
 
         if self.reminder_to_edit.get('weekdays'):
             # 週期性提醒

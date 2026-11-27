@@ -23,13 +23,20 @@ class TestReminderService(unittest.TestCase):
 
     def test_add_reminder_one_time(self):
         dt = datetime(2025, 12, 25, 10, 0, 0)
-        self.service.add_reminder(dt, "Test Message", [], title="Test Title")
+        self.service.add_reminder(
+            dt,
+            "Test Message",
+            [],
+            title="Test Title",
+            allow_during_quiet=True,
+        )
 
         self.mock_config_mgr.save_config.assert_called()
         self.assertEqual(len(self.config_data['reminders']), 1)
         r = self.config_data['reminders'][0]
         self.assertEqual(r['message'], "Test Message")
         self.assertEqual(r['title'], "Test Title")
+        self.assertTrue(r['allow_during_quiet'])
         self.assertIn("2025-12-25", r['datetime'])
 
     def test_add_reminder_weekly(self):

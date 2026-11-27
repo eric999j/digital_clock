@@ -40,6 +40,17 @@ class TestSnoozeReminder(unittest.TestCase):
         self.assertIn(weekly, self.config['reminders'])
         self.assertEqual(len(self.config['reminders']), 2)
 
+    def test_snooze_preserves_quiet_period_override(self):
+        original = {
+            "message": "重要",
+            "title": "通知",
+            "allow_during_quiet": True,
+        }
+
+        snoozed = self.service.snooze_reminder(original, 5, now=self.now)
+
+        self.assertTrue(snoozed["allow_during_quiet"])
+
     def test_snooze_crosses_midnight(self):
         late = datetime(2026, 12, 31, 23, 58, 0)
         snoozed = self.service.snooze_reminder({"message": "m", "title": "t"}, 5, now=late)

@@ -65,6 +65,17 @@ class PauseManager:
             return bool(self._legacy_pause_sources(config_data)[key])
         return False
 
+    def is_manually_paused(
+        self,
+        key: str,
+        config: dict[str, Any] | None = None,
+    ) -> bool:
+        """回傳功能是否由使用者明確暫停，不把勿擾來源視為手動暫停。"""
+        if key not in self._PAUSE_KEYS:
+            return False
+        config_data = config if config is not None else self.config
+        return self._MANUAL in self._legacy_pause_sources(config_data)[key]
+
     def set_pause_state(self, key: str, paused: bool) -> None:
         """新增或移除指定功能的手動暫停來源。"""
         if key not in self._PAUSE_KEYS:

@@ -116,6 +116,11 @@ class ConfigManager:
             "deleted_themes": [],
             "reminders": [],
             "vacation_schedules": [],
+            "notifications": {
+                "queue_during_quiet": True,
+                "allow_high_priority_todo": True,
+                "allow_reminder_override": True,
+            },
             "calendar_sync": {
                 "enabled": False,
                 "ics_url": "",  # Outlook 發佈的 ICS 連結（含密鑰，僅存於本機設定檔）

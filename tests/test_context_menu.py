@@ -200,7 +200,7 @@ class TestContextMenuIntegration(unittest.TestCase):
         menu = self.clock.context_menu
         labels = self._labels(menu)
         self.assertEqual(labels[labels.index("待辦事項") + 1:labels.index("待辦事項") + 5],
-                         ["---", "通知中心…", "---", "效率提升"])
+                         ["---", "通知中心…", "智慧通知", "---"])
 
         productivity = menu.nametowidget(menu.entrycget(labels.index("效率提升"), "menu"))
         self.assertEqual(self._labels(productivity), ["番茄鐘", "倒數計時"])
@@ -248,7 +248,7 @@ class TestContextMenuIntegration(unittest.TestCase):
         labels = self._labels(self.clock.context_menu)
         start = labels.index("整點啟動")
         self.assertEqual(labels[start:start + 7],
-                         ["整點啟動", "---", "待辦事項", "---", "通知中心…", "---", "效率提升"])
+                         ["整點啟動", "---", "待辦事項", "---", "通知中心…", "智慧通知", "---"])
         self.assertEqual(self._labels(self.clock.context_menu.hourly_web_menu), ["設定", "暫停"])
         self.assertEqual(self._labels(self.clock.context_menu.todo_menu), ["開啟待辦事項…", "整點提醒到期待辦"])
 
@@ -329,7 +329,20 @@ class TestContextMenuIntegration(unittest.TestCase):
         labels = self._labels(self.clock.context_menu)
         entries = [label for label in labels if label != "---"]
 
-        self.assertEqual(entries, ["勿擾模式", "提醒", "整點啟動", "待辦事項", "通知中心…", "效率提升", "時鐘設定", "離開"])
+        self.assertEqual(
+            entries,
+            [
+                "勿擾模式",
+                "提醒",
+                "整點啟動",
+                "待辦事項",
+                "通知中心…",
+                "智慧通知",
+                "效率提升",
+                "時鐘設定",
+                "離開",
+            ],
+        )
         # 不應出現連續或頭尾的分隔線
         self.assertNotEqual(labels[0], "---")
         self.assertNotEqual(labels[-1], "---")

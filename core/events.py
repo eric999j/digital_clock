@@ -66,4 +66,5 @@ class Events:
     APP_STATE_CHANGED = 'app_state_changed'
     NOTIFICATION_ADDED = 'notification_added'
     NOTIFICATIONS_CHANGED = 'notifications_changed'
+    NOTIFICATIONS_RELEASED = 'notifications_released'
     OPEN_NOTIFICATION_CENTER = 'open_notification_center'

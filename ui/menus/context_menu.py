@@ -58,6 +58,42 @@ class ContextMenu(Menu):
 
         # 通知中心（標籤顯示未讀數，開啟選單時刷新）
         self.add_command(label="通知中心…", command=self.logic.open_notification_center)
+        notification_settings = self.logic.get_notification_settings()
+        notification_menu = Menu(self, tearoff=0)
+        self.notification_queue_var = BooleanVar(
+            master=self,
+            value=notification_settings.get("queue_during_quiet", True),
+        )
+        self.notification_todo_var = BooleanVar(
+            master=self,
+            value=notification_settings.get("allow_high_priority_todo", True),
+        )
+        self.notification_reminder_var = BooleanVar(
+            master=self,
+            value=notification_settings.get("allow_reminder_override", True),
+        )
+        notification_menu.add_checkbutton(
+            label="專注／勿擾期間延後一般通知",
+            variable=self.notification_queue_var,
+            command=lambda: self.logic.update_notification_settings(
+                queue_during_quiet=self.notification_queue_var.get(),
+            ),
+        )
+        notification_menu.add_checkbutton(
+            label="高優先待辦可立即提醒",
+            variable=self.notification_todo_var,
+            command=lambda: self.logic.update_notification_settings(
+                allow_high_priority_todo=self.notification_todo_var.get(),
+            ),
+        )
+        notification_menu.add_checkbutton(
+            label="允許個別提醒設為立即顯示",
+            variable=self.notification_reminder_var,
+            command=lambda: self.logic.update_notification_settings(
+                allow_reminder_override=self.notification_reminder_var.get(),
+            ),
+        )
+        self.add_cascade(label="智慧通知", menu=notification_menu)
         self.add_separator()
 
         # 效率提升（待辦事項下方）：收納番茄鐘與倒數計時

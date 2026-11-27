@@ -33,7 +33,15 @@ class ReminderService:
     def config(self) -> dict[str, Any]:
         return self.config_manager.load_config()
 
-    def add_reminder(self, time_data: Any, message: str, weekdays: list[str], original_reminder: dict[str, Any] | None = None, title: str = "") -> None:
+    def add_reminder(
+        self,
+        time_data: Any,
+        message: str,
+        weekdays: list[str],
+        original_reminder: dict[str, Any] | None = None,
+        title: str = "",
+        allow_during_quiet: bool = False,
+    ) -> None:
         """新增或以單次設定寫入更新提醒。"""
         is_update = original_reminder is not None
 
@@ -43,7 +51,8 @@ class ReminderService:
                 "time": time_data,
                 "message": message,
                 "weekdays": weekdays,
-                "title": title
+                "title": title,
+                "allow_during_quiet": bool(allow_during_quiet),
             }
         else:
             # 單次提醒
@@ -51,7 +60,8 @@ class ReminderService:
                 "datetime": time_data.strftime('%Y-%m-%d %H:%M:%S'),
                 "message": message,
                 "weekdays": [],
-                "title": title
+                "title": title,
+                "allow_during_quiet": bool(allow_during_quiet),
             }
 
         config = self.config
@@ -122,6 +132,8 @@ class ReminderService:
             "weekdays": [],
             "title": reminder.get('title', ''),
         }
+        if reminder.get('allow_during_quiet', False):
+            snoozed['allow_during_quiet'] = True
 
         config = self.config
         config.setdefault('reminders', []).append(snoozed)

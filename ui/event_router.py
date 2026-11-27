@@ -40,6 +40,7 @@ def build_event_handlers(ui: Any) -> dict[str, EventHandler]:
         Events.OPEN_TODO_WINDOW: ui._on_open_todo_window,
         Events.OPEN_NOTIFICATION_CENTER: ui._on_open_notification_center,
         Events.NOTIFICATIONS_CHANGED: ui._on_notifications_changed,
+        Events.NOTIFICATIONS_RELEASED: ui._on_notifications_released,
         Events.TODO_UPDATED: ui._on_todo_updated,
         Events.TODO_DUE: ui._on_todo_due,
         Events.TODO_REMIND_TOGGLED: ui._on_todo_remind_toggled,

@@ -44,6 +44,7 @@ class TestEventRouter(unittest.TestCase):
                 Events.OPEN_TODO_WINDOW,
                 Events.OPEN_NOTIFICATION_CENTER,
                 Events.NOTIFICATIONS_CHANGED,
+                Events.NOTIFICATIONS_RELEASED,
                 Events.TODO_UPDATED,
                 Events.TODO_DUE,
                 Events.TODO_REMIND_TOGGLED,

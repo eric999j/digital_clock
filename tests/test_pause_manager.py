@@ -23,6 +23,22 @@ class TestPauseManager(unittest.TestCase):
         self.assertTrue(self.manager.get_pause_state('vacation', config=config_snapshot))
         self.assertFalse(self.manager.get_pause_state('unknown', config=config_snapshot))
 
+    def test_manual_pause_excludes_quiet_vacation_source(self) -> None:
+        config_snapshot = {
+            'pause_sources': {
+                'reminder': ['vacation'],
+                'hourly_web': ['manual', 'vacation'],
+            },
+            'vacation_sources': ['calendar'],
+        }
+
+        self.assertFalse(
+            self.manager.is_manually_paused('reminder', config=config_snapshot)
+        )
+        self.assertTrue(
+            self.manager.is_manually_paused('hourly_web', config=config_snapshot)
+        )
+
     def test_vacation_adds_shared_pause_source_and_stops_pomodoro(self) -> None:
         config = {'reminder_paused': False, 'hourly_web_reminder': {'paused': False}, 'on_vacation': False}
         self.mock_config_mgr.load_config.return_value = config

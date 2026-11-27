@@ -28,6 +28,7 @@ class TestTodoDueStrategy(unittest.TestCase):
         items = self.strategy.check(CONFIG, make_tasks(), THURSDAY_9AM)
         self.assertEqual([i["text"] for i in items], ["逾期", "今日"])
         self.assertEqual([i["status"] for i in items], ["overdue", "today"])
+        self.assertEqual([i["priority"] for i in items], ["normal", "normal"])
 
     def test_nested_children_are_included(self) -> None:
         parent = TodoTask("父", start_date=date(2026, 11, 1), children=[TodoTask("子", due_date=date(2026, 11, 5), start_date=date(2026, 11, 1))])

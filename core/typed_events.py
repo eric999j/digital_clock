@@ -59,6 +59,7 @@ EVENT_ARGUMENT_COUNTS: Mapping[str, tuple[int, int]] = MappingProxyType({
     Events.VACATION_TOGGLED: (1, 1),
     Events.CALENDAR_EVENT_UPCOMING: (2, 2),
     Events.CALENDAR_EVENT_STARTED: (1, 1),
+    Events.NOTIFICATIONS_RELEASED: (1, 1),
     Events.SCREENSHOT_TRIGGERED: (0, 0),
 })
 

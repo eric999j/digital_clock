@@ -16,9 +16,15 @@ class ClockLogicFacade:
         weekdays: list[str],
         original_reminder: dict[str, Any] | None = None,
         title: str = "",
+        allow_during_quiet: bool = False,
     ) -> None:
         self.reminder_service.add_reminder(
-            time_data, message, weekdays, original_reminder, title
+            time_data,
+            message,
+            weekdays,
+            original_reminder,
+            title,
+            allow_during_quiet,
         )
 
     def delete_reminder(
@@ -176,6 +182,14 @@ class ClockLogicFacade:
     def open_notification_center(self) -> None:
         """請求 UI 開啟通知中心。"""
         self.notify_observers(Events.OPEN_NOTIFICATION_CENTER)
+
+    def get_notification_settings(self) -> dict[str, bool]:
+        """取得智慧通知設定。"""
+        return self.notification_center.get_settings()
+
+    def update_notification_settings(self, **changes: bool) -> None:
+        """更新智慧通知設定。"""
+        self.notification_center.update_settings(**changes)
 
     def open_todo_window(self) -> None:
         """請求 UI 開啟待辦事項視窗。"""

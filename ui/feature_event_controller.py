@@ -3,6 +3,7 @@ import logging
 import tkinter as tk
 from typing import Any
 
+from core.events import Events
 from core.url_validator import is_safe_url
 from services.countdown_service import CountdownService
 from ui.window_controller import WindowController
@@ -25,6 +26,8 @@ class FeatureEventController:
     def _on_pomodoro_phase_complete(self, new_phase: str, *args) -> None:
         from ui.popup_utils import show_reminder_popup_window
 
+        if self._notification_should_defer(Events.POMODORO_PHASE_COMPLETE, new_phase):
+            return
         phase_map = {
             "FOCUS": "專注",
             "SHORT_BREAK": "短休息",
@@ -47,6 +50,8 @@ class FeatureEventController:
         from ui.popup_utils import show_reminder_popup_window
 
         self.config["reminders"] = self.logic.get_config().get("reminders", [])
+        if self._notification_should_defer(Events.REMINDER_DUE, reminder):
+            return
         display_text = (
             reminder.get("message")
             or reminder.get("title", "")
@@ -100,6 +105,12 @@ class FeatureEventController:
         from ui.popup_utils import show_reminder_popup_window
 
         self._refresh_info_lines()
+        if self._notification_should_defer(
+            Events.COUNTDOWN_FINISHED,
+            label,
+            total_seconds,
+        ):
+            return
         try:
             self.root.bell()
         except tk.TclError:
@@ -330,6 +341,47 @@ class FeatureEventController:
         if window is not None:
             window.refresh()
 
+    def _on_notifications_released(
+        self,
+        summaries: list[dict[str, Any]],
+        *args,
+    ) -> None:
+        """離開專注或會議後，以單一視窗顯示延後通知摘要。"""
+        from ui.popup_utils import show_reminder_popup_window
+
+        groups = [
+            f"- {item.get('source_label', item.get('source', '通知'))} "
+            f"{item.get('count', 0)} 則"
+            for item in summaries
+            if isinstance(item, dict) and int(item.get('count', 0)) > 0
+        ]
+        if not groups:
+            return
+        total = sum(int(item.get('count', 0)) for item in summaries)
+        message = (
+            f"已離開勿擾／專注狀態，共有 {total} 則延後通知：\n"
+            + "\n".join(groups)
+        )
+        self.root.after_idle(
+            lambda: show_reminder_popup_window(
+                self.root,
+                message,
+                self._get_current_theme(),
+                title="延後通知摘要",
+                ok_text="知道了",
+            )
+        )
+
+    def _notification_should_defer(self, event: str, *args: Any) -> bool:
+        """查詢通知中心是否已把此事件列入安靜狀態佇列。"""
+        center = getattr(self.logic, 'notification_center', None)
+        should_defer = getattr(center, 'should_defer', None)
+        return (
+            should_defer(event, *args) is True
+            if callable(should_defer)
+            else False
+        )
+
     def _on_open_todo_window(self, *args) -> None:
         """開啟待辦事項視窗；已開啟時只帶到前景。"""
         self._get_window_controller().open_todo()
@@ -364,6 +416,8 @@ class FeatureEventController:
         """顯示今日到期與逾期待辦提醒。"""
         from ui.popup_utils import show_reminder_popup_window
 
+        if self._notification_should_defer(Events.TODO_DUE, items):
+            return
         show_reminder_popup_window(
             self.root,
             self._format_todo_due_message(items),
@@ -473,6 +527,12 @@ class FeatureEventController:
         minutes: int = 0,
         *args,
     ) -> None:
+        if self._notification_should_defer(
+            Events.CALENDAR_EVENT_UPCOMING,
+            summary,
+            minutes,
+        ):
+            return
         name = f"「{summary}」" if summary else "行事曆事件"
         self._show_calendar_popup(
             f"{name}約 {minutes} 分鐘後開始，將自動進入勿擾模式",
@@ -487,6 +547,11 @@ class FeatureEventController:
         self._close_calendar_popup()
         if not self.config.get("calendar_sync", {}).get(
             "show_in_meeting", True
+        ):
+            return
+        if self._notification_should_defer(
+            Events.CALENDAR_EVENT_STARTED,
+            summary,
         ):
             return
         self._show_calendar_popup("會議中...", "行事曆")

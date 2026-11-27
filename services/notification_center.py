@@ -9,6 +9,8 @@ from typing import Any
 
 from core.events import Events
 from core.observer import Observer
+from services.config_service import ConfigManager
+from services.config_store import persist_config
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,7 @@ class Notification:
     message: str
     timestamp: datetime
     read: bool = False
+    deferred: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -58,17 +61,25 @@ class NotificationCenter(Observer):
         notify_callback: Callable[..., None],
         max_items: int = DEFAULT_MAX_ITEMS,
         clock: Callable[[], datetime] = datetime.now,
+        config_manager: ConfigManager | None = None,
+        state_getter: Callable[[], Any] | None = None,
     ) -> None:
         """
         Args:
             notify_callback: 通知回調 ``(event, *args)``
             max_items: 歷史上限，超過時丟棄最舊的
             clock: 取得現在時間的函數，測試時可注入
+            config_manager: 智慧通知設定來源
+            state_getter: 回傳目前 AppState snapshot 的函數
         """
         self.notify = notify_callback
         self._clock = clock
+        self.config_manager = config_manager
+        self._state_getter = state_getter
+        self._was_quiet = self._is_quiet()
         self._items: deque[Notification] = deque(maxlen=max(1, max_items))
         self._ids = itertools.count(1)
+        self._deferred_ids: set[int] = set()
 
     # ---- 查詢 ----
 
@@ -85,10 +96,27 @@ class NotificationCenter(Observer):
 
     # ---- 操作 ----
 
-    def add(self, source: str, title: str, message: str, **extra: Any) -> Notification:
+    def add(
+        self,
+        source: str,
+        title: str,
+        message: str,
+        deferred: bool = False,
+        **extra: Any,
+    ) -> Notification:
         """新增通知並發出 ``NOTIFICATION_ADDED`` 與 ``NOTIFICATIONS_CHANGED``。"""
-        item = Notification(next(self._ids), source, title, message, self._clock(), extra=extra)
+        item = Notification(
+            next(self._ids),
+            source,
+            title,
+            message,
+            self._clock(),
+            deferred=deferred,
+            extra=extra,
+        )
         self._items.append(item)
+        if deferred:
+            self._deferred_ids.add(item.id)
         self.notify(Events.NOTIFICATION_ADDED, item)
         self._changed()
         return item
@@ -103,6 +131,7 @@ class NotificationCenter(Observer):
     def clear(self) -> None:
         if self._items:
             self._items.clear()
+            self._deferred_ids.clear()
             self._changed()
 
     def _changed(self) -> None:
@@ -112,9 +141,109 @@ class NotificationCenter(Observer):
 
     def update(self, event: str, *args: Any, **kwargs: Any) -> None:
         """把支援的事件轉成通知；其餘事件（含自己發出的）忽略。"""
+        if event == Events.APP_STATE_CHANGED:
+            is_quiet = self._snapshot_is_quiet(args[0] if args else None)
+            if self._was_quiet and not is_quiet:
+                self._release_deferred()
+            self._was_quiet = is_quiet
+            return
         built = self._build(event, args)
         if built is not None:
-            self.add(*built)
+            self.add(*built, deferred=self.should_defer(event, *args))
+
+    def get_settings(self) -> dict[str, bool]:
+        """取得智慧通知設定，未注入設定管理器時使用安全預設。"""
+        if self.config_manager is None:
+            return {
+                'queue_during_quiet': True,
+                'allow_high_priority_todo': True,
+                'allow_reminder_override': True,
+            }
+        config = self.config_manager.load_config(read_only=True).get(
+            'notifications',
+            {},
+        )
+        return {
+            'queue_during_quiet': bool(config.get('queue_during_quiet', True)),
+            'allow_high_priority_todo': bool(
+                config.get('allow_high_priority_todo', True)
+            ),
+            'allow_reminder_override': bool(
+                config.get('allow_reminder_override', True)
+            ),
+        }
+
+    def update_settings(self, **changes: bool) -> dict[str, bool]:
+        """更新智慧通知設定；忽略不支援的欄位。"""
+        if self.config_manager is None:
+            return self.get_settings()
+        current = self.get_settings()
+        for key in current:
+            if key in changes:
+                current[key] = bool(changes[key])
+        config = self.config_manager.load_config()
+        config['notifications'] = current
+        persist_config(self.config_manager, config)
+        return current
+
+    def should_defer(self, event: str, *args: Any) -> bool:
+        """判斷事件是否應只送入通知中心，留待離開安靜狀態後提示。"""
+        settings = self.get_settings()
+        if not settings['queue_during_quiet'] or not self._is_quiet():
+            return False
+        if event == Events.REMINDER_DUE:
+            reminder = args[0] if args and isinstance(args[0], dict) else {}
+            return not (
+                settings['allow_reminder_override']
+                and bool(reminder.get('allow_during_quiet', False))
+            )
+        if event == Events.TODO_DUE:
+            items = args[0] if args and isinstance(args[0], list) else []
+            has_high_priority = any(
+                isinstance(item, dict) and item.get('priority') == 'high'
+                for item in items
+            )
+            return not (
+                settings['allow_high_priority_todo']
+                and has_high_priority
+            )
+        return event in {
+            Events.POMODORO_PHASE_COMPLETE,
+            Events.COUNTDOWN_FINISHED,
+            Events.CALENDAR_EVENT_UPCOMING,
+            Events.CALENDAR_EVENT_STARTED,
+        }
+
+    def _release_deferred(self) -> None:
+        """將延後通知依來源合併後發出單一摘要事件。"""
+        if not self._deferred_ids:
+            return
+        grouped: dict[str, dict[str, Any]] = {}
+        for item in self._items:
+            if item.id not in self._deferred_ids:
+                continue
+            item.deferred = False
+            summary = grouped.setdefault(
+                item.source,
+                {
+                    'source': item.source,
+                    'source_label': item.source_label,
+                    'count': 0,
+                },
+            )
+            summary['count'] += 1
+        self._deferred_ids.clear()
+        if grouped:
+            self.notify(Events.NOTIFICATIONS_RELEASED, list(grouped.values()))
+
+    def _is_quiet(self) -> bool:
+        if self._state_getter is None:
+            return False
+        return self._snapshot_is_quiet(self._state_getter())
+
+    @staticmethod
+    def _snapshot_is_quiet(snapshot: Any) -> bool:
+        return bool(getattr(snapshot, 'is_quiet', False))
 
     @staticmethod
     def _build(event: str, args: tuple[Any, ...]) -> tuple[str, str, str] | None:

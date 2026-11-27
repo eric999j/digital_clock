@@ -60,6 +60,7 @@ class TodoDueStrategy(CheckStrategy):
                 'status': 'overdue' if task.due_date and task.due_date < today else 'today',
                 'link': task.link,
                 'project': task.project,
+                'priority': task.priority,
             }
             for task in due
         ]

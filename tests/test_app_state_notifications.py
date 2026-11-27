@@ -135,6 +135,73 @@ class TestNotificationCenter(unittest.TestCase):
         self.assertEqual(self.center.get_item(3).title, "2")
         self.assertIsNone(self.center.get_item(999))
 
+    def test_quiet_period_defers_and_releases_grouped_summary(self) -> None:
+        state = SimpleNamespace(is_quiet=True)
+        center = NotificationCenter(
+            self.notify,
+            state_getter=lambda: state,
+        )
+
+        center.update(Events.REMINDER_DUE, {'title': '喝水'})
+        center.update(Events.REMINDER_DUE, {'title': '休息'})
+        center.update(Events.TODO_DUE, [{'status': 'today', 'priority': 'normal'}])
+
+        self.assertTrue(all(item.deferred for item in center.items()))
+        state.is_quiet = False
+        center.update(Events.APP_STATE_CHANGED, state)
+
+        released = next(
+            call.args[1]
+            for call in self.notify.call_args_list
+            if call.args[0] == Events.NOTIFICATIONS_RELEASED
+        )
+        self.assertEqual(
+            {(item['source'], item['count']) for item in released},
+            {(SOURCE_REMINDER, 2), (SOURCE_TODO, 1)},
+        )
+        self.assertTrue(all(not item.deferred for item in center.items()))
+
+    def test_quiet_period_allows_configured_urgent_exceptions(self) -> None:
+        state = SimpleNamespace(is_quiet=True)
+        center = NotificationCenter(
+            self.notify,
+            state_getter=lambda: state,
+        )
+
+        self.assertFalse(center.should_defer(
+            Events.REMINDER_DUE,
+            {'allow_during_quiet': True},
+        ))
+        self.assertFalse(center.should_defer(
+            Events.TODO_DUE,
+            [{'priority': 'high'}],
+        ))
+        self.assertTrue(center.should_defer(
+            Events.REMINDER_DUE,
+            {'allow_during_quiet': False},
+        ))
+
+    def test_queue_can_be_disabled_in_settings(self) -> None:
+        config = {
+            'notifications': {
+                'queue_during_quiet': False,
+                'allow_high_priority_todo': True,
+                'allow_reminder_override': True,
+            },
+        }
+        manager = MagicMock()
+        manager.load_config.return_value = config
+        center = NotificationCenter(
+            self.notify,
+            config_manager=manager,
+            state_getter=lambda: SimpleNamespace(is_quiet=True),
+        )
+
+        self.assertFalse(center.should_defer(Events.COUNTDOWN_FINISHED, '', 60))
+        settings = center.update_settings(queue_during_quiet=True)
+        self.assertTrue(settings['queue_during_quiet'])
+        manager.save_config.assert_called_once()
+
 
 class TestNotificationWindow(unittest.TestCase):
     def test_double_click_opens_view_only_popup_without_snooze(self) -> None:
